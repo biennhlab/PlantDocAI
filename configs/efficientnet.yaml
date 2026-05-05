@@ -12,7 +12,7 @@ mean: [0.485, 0.456, 0.406]
 std: [0.229, 0.224, 0.225]
 
 batchSize: 32
-numEpochs: 15
+numEpochs: 20
 learningRate: 0.001
 weightDecay: 0.0001
 numWorkers: 2
@@ -114,7 +114,7 @@ augmentation:
 #   Giai đoạn 2 (epoch headOnlyEpochs+1 → numEpochs): Unfreeze toàn backbone,
 #   optimizer được tạo lại với LR thấp hơn 10x để tránh catastrophic forgetting.
 # Khi bật: freezeBackbone bị override thành True tự động cho giai đoạn 1.
-useStagedFinetuning: false
+useStagedFinetuning: true
 headOnlyEpochs: 3
 
 # ─────────────────────────────────────────────────────────────────
@@ -125,7 +125,7 @@ headOnlyEpochs: 3
 #   "cosine"        → CosineAnnealingLR(T_max=numEpochs)
 #   "warmup_cosine" → Linear warmup trong warmupEpochs epoch đầu,
 #                     sau đó Cosine decay — ổn định nhất cho fine-tune backbone.
-schedulerType: "step"
+schedulerType: "warmup_cosine"
 
 # warmupEpochs: Số epoch warmup (chỉ dùng khi schedulerType="warmup_cosine").
 warmupEpochs: 3
@@ -136,7 +136,7 @@ warmupEpochs: 3
 # useLayerLR: Bật 2 param groups với LR khác nhau:
 #   - Classifier head: learningRate (trên)
 #   - Backbone layers: backboneLR (thấp hơn)
-useLayerLR: false
+useLayerLR: true
 backboneLR: 0.0001
 
 # ─────────────────────────────────────────────────────────────────
