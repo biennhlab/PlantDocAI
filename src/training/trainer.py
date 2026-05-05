@@ -8,6 +8,7 @@ from torch.utils.data import DataLoader
 
 from src.training.checkpoint import saveCheckpoint
 from src.training.metrics import AverageMeter, accuracyAtK
+from src.models.modelFactory import unfreezeModel
 
 
 class Trainer:
@@ -24,6 +25,14 @@ class Trainer:
         outputDir: str,
         topK: int = 3,
         saveBestMetric: str = "valTop1",
+        # ── Staged fine-tuning ────────────────────────────────────────────────
+        useStagedFinetuning: bool = False,
+        headOnlyEpochs: int = 3,
+        # ── Optimizer rebuild config (needed for staged unfreeze) ─────────────
+        optimizerLR: float = 0.001,
+        weightDecay: float = 0.0001,
+        backboneLR: Optional[float] = None,
+        useLayerLR: bool = False,
     ):
         self.model = model
         self.device = device
@@ -36,6 +45,17 @@ class Trainer:
         self.outputDir = Path(outputDir)
         self.topK = topK
         self.saveBestMetric = saveBestMetric
+
+        # Staged fine-tuning state
+        self.useStagedFinetuning = useStagedFinetuning
+        self.headOnlyEpochs = headOnlyEpochs
+        self._stageUnfreezeApplied = False  # Guard: chỉ unfreeze 1 lần
+
+        # Lưu optimizer config để rebuild sau staged unfreeze
+        self._optimizerLR = optimizerLR
+        self._weightDecay = weightDecay
+        self._backboneLR = backboneLR
+        self._useLayerLR = useLayerLR
 
         self.checkpointDir = self.outputDir / "checkpoints"
         self.logDir = self.outputDir / "logs"
@@ -129,10 +149,75 @@ class Trainer:
             "topK": topKMeter.avg,
         }
 
+    def _countTrainableParams(self) -> int:
+        return sum(p.numel() for p in self.model.parameters() if p.requires_grad)
+
+    def _applyStageUnfreeze(self, config: Dict[str, Any]) -> None:
+        """
+        Unfreeze toàn bộ backbone và tạo lại optimizer với LR thấp hơn.
+
+        Lý do tạo lại optimizer thay vì add_param_group():
+          - Khi staged unfreeze xảy ra, backbone lần đầu tiên trở thành trainable.
+          - Adam optimizer cũ không có momentum history cho backbone params.
+          - Tạo lại optimizer sạch đảm bảo tất cả param groups được quản lý
+            đúng ngay từ đầu giai đoạn 2, tránh lỗi tiềm ẩn.
+          - LR được giảm 10x để tránh shock gradient khi fine-tune backbone.
+        """
+        print("\n" + "="*60)
+        print("[STAGED] Giai đoạn 1 kết thúc. Bắt đầu Giai đoạn 2: Unfreeze backbone.")
+        paramsBefore = self._countTrainableParams()
+        print(f"[STAGED] Trainable params trước unfreeze: {paramsBefore:,}")
+
+        # Unfreeze toàn bộ model
+        unfreezeModel(self.model)
+
+        paramsAfter = self._countTrainableParams()
+        print(f"[STAGED] Trainable params sau unfreeze:  {paramsAfter:,}")
+
+        # LR giai đoạn 2: giảm 10x để tránh catastrophic forgetting
+        stage2LR = self._optimizerLR * 0.1
+        stage2BackboneLR = (self._backboneLR * 0.1) if self._backboneLR is not None else stage2LR
+
+        if self._useLayerLR:
+            from src.models.modelFactory import buildParamGroups
+            paramGroups = buildParamGroups(
+                model=self.model,
+                headLR=stage2LR,
+                backboneLR=stage2BackboneLR,
+            )
+        else:
+            trainableParams = [p for p in self.model.parameters() if p.requires_grad]
+            paramGroups = [{"params": trainableParams, "lr": stage2LR}]
+            print(f"[STAGED] Optimizer rebuilt: single group — {len(trainableParams)} params @ lr={stage2LR:.2e}")
+
+        # Tạo lại optimizer Adam với cùng weight_decay
+        self.optimizer = torch.optim.Adam(paramGroups, weight_decay=self._weightDecay)
+        print(f"[STAGED] Optimizer Adam rebuilt cho giai đoạn 2 (stage2LR={stage2LR:.2e})")
+        print("="*60 + "\n")
+
+        self._stageUnfreezeApplied = True
+
     def fit(self, numEpochs: int, config: Dict[str, Any], startEpoch: int = 1):
         print("[INFO] Start training loop")
 
+        # Nếu resume vào giai đoạn 2 (epoch > headOnlyEpochs), backbone đã được unfreeze
+        # trong checkpoint → không cần unfreeze lại, chỉ cần đánh dấu đã apply.
+        if self.useStagedFinetuning and startEpoch > self.headOnlyEpochs:
+            self._stageUnfreezeApplied = True
+            print(
+                f"[STAGED] Resume từ epoch {startEpoch} — đã qua giai đoạn 1 "
+                f"(headOnlyEpochs={self.headOnlyEpochs}). Backbone được xem là đã unfreeze."
+            )
+
         for epoch in range(startEpoch, numEpochs + 1):
+            # ── Staged unfreeze check ──────────────────────────────────────────
+            if (
+                self.useStagedFinetuning
+                and not self._stageUnfreezeApplied
+                and epoch == self.headOnlyEpochs + 1
+            ):
+                self._applyStageUnfreeze(config)
+
             startTime = time.time()
 
             trainMetrics = self._runOneEpoch(self.trainLoader, training=True)
