@@ -105,3 +105,49 @@ augmentation:
   gaussNoiseP: 0.25
   
   grayscaleP: 0.05
+
+# ─────────────────────────────────────────────────────────────────
+# Staged Fine-tuning
+# ─────────────────────────────────────────────────────────────────
+# useStagedFinetuning: Bật chế độ huấn luyện 2 giai đoạn.
+#   Giai đoạn 1 (epoch 1 → headOnlyEpochs): Chỉ train classifier head.
+#   Giai đoạn 2 (epoch headOnlyEpochs+1 → numEpochs): Unfreeze toàn backbone,
+#   optimizer được tạo lại với LR thấp hơn 10x để tránh catastrophic forgetting.
+# Khi bật: freezeBackbone bị override thành True tự động cho giai đoạn 1.
+useStagedFinetuning: false
+headOnlyEpochs: 3
+
+# ─────────────────────────────────────────────────────────────────
+# Learning Rate Scheduler
+# ─────────────────────────────────────────────────────────────────
+# schedulerType:
+#   "step"          → StepLR(step_size=3, gamma=0.1) [mặc định — behavior cũ]
+#   "cosine"        → CosineAnnealingLR(T_max=numEpochs)
+#   "warmup_cosine" → Linear warmup trong warmupEpochs epoch đầu,
+#                     sau đó Cosine decay — ổn định nhất cho fine-tune backbone.
+schedulerType: "step"
+
+# warmupEpochs: Số epoch warmup (chỉ dùng khi schedulerType="warmup_cosine").
+# Trong warmup, LR tăng đều từ ~0 lên learningRate.
+# Khuyến nghị 2-5 epoch để tránh shock gradient khi unfreeze backbone.
+warmupEpochs: 3
+
+# ─────────────────────────────────────────────────────────────────
+# Layer-wise Learning Rate
+# ─────────────────────────────────────────────────────────────────
+# useLayerLR: Bật 2 param groups với LR khác nhau:
+#   - Classifier head: learningRate (trên)
+#   - Backbone layers: backboneLR (thấp hơn)
+# Hiệu quả nhất khi freezeBackbone=false hoặc ở giai đoạn 2 của staged training.
+useLayerLR: false
+backboneLR: 0.0001
+
+# ─────────────────────────────────────────────────────────────────
+# Custom Pretrained Checkpoint
+# ─────────────────────────────────────────────────────────────────
+# pretrainedPath: Đường dẫn tới file .pt cục bộ để dùng làm pretrained base.
+# Nếu để rỗng → dùng ImageNet pretrained weights từ timm (mặc định).
+# Hỗ trợ: full PlantDocAI checkpoint (có key "modelStateDict") hoặc raw state_dict.
+# Dùng strict=False → classifier head có thể khác numClasses (keys bị skip sẽ được log).
+# Ví dụ: pretrainedPath: "artifacts/efficientnetB0_extended/checkpoints/best.pt"
+pretrainedPath: ""
