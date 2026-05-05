@@ -326,24 +326,39 @@ def _buildAlbumentationsTrain(inputSize: int, aug: AugConfig):
 
     # ── GaussNoise (phá nền sạch — trước normalize) ──────────────────────
     if aug.gaussNoiseEnabled:
-        albu_ops.append(
-            A.GaussNoise(
-                var_limit=(aug.gaussNoiseVarMin, aug.gaussNoiseVarMax),
-                p=aug.gaussNoiseP,
-            )
-        )
+        # Albumentations 1.4+ dùng std_range, phiên bản cũ dùng var_limit.
+        # Chúng ta ưu tiên API mới để xóa warning trên Colab.
+        try:
+            # Ước lượng std từ variance (sqrt(var))
+            std_min = aug.gaussNoiseVarMin ** 0.5
+            std_max = aug.gaussNoiseVarMax ** 0.5
+            albu_ops.append(A.GaussNoise(std_range=(std_min, std_max), p=aug.gaussNoiseP))
+        except (TypeError, ValueError):
+            albu_ops.append(A.GaussNoise(var_limit=(aug.gaussNoiseVarMin, aug.gaussNoiseVarMax), p=aug.gaussNoiseP))
 
     # ── CoarseDropout (nhiều patch nhỏ — chống shortcut nền) ─────────────
     if aug.coarseDropoutEnabled:
-        albu_ops.append(
-            A.CoarseDropout(
-                max_holes=aug.coarseDropoutMaxHoles,
-                max_height=aug.coarseDropoutHoleHeight,
-                max_width=aug.coarseDropoutHoleWidth,
-                fill_value=128,   # xám trung tính (trước normalize)
-                p=aug.coarseDropoutP,
+        try:
+            # Albumentations 1.4+ API
+            albu_ops.append(
+                A.CoarseDropout(
+                    num_holes_range=(1, aug.coarseDropoutMaxHoles),
+                    hole_height_range=(8, aug.coarseDropoutHoleHeight),
+                    hole_width_range=(8, aug.coarseDropoutHoleWidth),
+                    fill_value=128,
+                    p=aug.coarseDropoutP,
+                )
             )
-        )
+        except (TypeError, ValueError):
+            albu_ops.append(
+                A.CoarseDropout(
+                    max_holes=aug.coarseDropoutMaxHoles,
+                    max_height=aug.coarseDropoutHoleHeight,
+                    max_width=aug.coarseDropoutHoleWidth,
+                    fill_value=128,
+                    p=aug.coarseDropoutP,
+                )
+            )
 
     # ── RandomGrayscale (buộc model học shape) ───────────────────────────
     if aug.grayscaleP > 0:

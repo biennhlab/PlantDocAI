@@ -248,6 +248,80 @@ def main() -> None:
     outputDir = Path(outputDirStr)
     outputDir.mkdir(parents=True, exist_ok=True)
 
+    # ── Handle Checkpoint Resume (PEEK) ────────────────────────────────────────
+    # Chúng ta cần biết epoch của checkpoint TRƯỚC khi tạo optimizer
+    # để đảm bảo số lượng parameter groups khớp nhau (staged unfreeze).
+    startEpoch = 1
+    checkpointData = None
+    if args.resume:
+        lastCheckpointPath = outputDir / "checkpoints" / "last.pt"
+        if lastCheckpointPath.exists():
+            print(f"[INFO] Peeking at checkpoint to resolve training stage: {lastCheckpointPath}")
+            checkpointData = torch.load(str(lastCheckpointPath), map_location="cpu")
+            checkpointEpoch = checkpointData.get("epoch", 0)
+            startEpoch = checkpointEpoch + 1
+            
+            # Nếu checkpoint đã qua giai đoạn unfreeze, chúng ta phải unfreeze model ngay bây giờ
+            if config.useStagedFinetuning and checkpointEpoch >= config.headOnlyEpochs:
+                print(f"[INFO] Checkpoint epoch {checkpointEpoch} > headOnlyEpochs {config.headOnlyEpochs}.")
+                print("[INFO] Unfreezing model EARLY to match checkpoint optimizer state.")
+                from src.models.modelFactory import unfreezeModel
+                unfreezeModel(model)
+                effectiveFreezeBackbone = False
+        else:
+            print(f"[INFO] --resume flag given but {lastCheckpointPath} not found. Starting fresh.")
+
+    # ── Loss ───────────────────────────────────────────────────────────────────
+    if config.useClassWeights:
+        from collections import Counter
+        from src.data.dataSplit import loadSplitCsv
+        
+        trainSamples = loadSplitCsv(f"{config.splitDir}/train.csv")
+        labelCounts = Counter(s.labelId for s in trainSamples)
+        total = sum(labelCounts.values())
+        
+        # Calculate inverse frequency weights to balance classes
+        weights = [total / (numClasses * labelCounts[i]) for i in range(numClasses)]
+        classWeightsTensor = torch.tensor(weights, dtype=torch.float32).to(device)
+        criterion = nn.CrossEntropyLoss(weight=classWeightsTensor)
+        print(f"[INFO] CrossEntropyLoss uses calculated class weights.")
+    else:
+        criterion = nn.CrossEntropyLoss()
+
+    # ── Optimizer ──────────────────────────────────────────────────────────────
+    if config.useLayerLR and not effectiveFreezeBackbone:
+        # Layer-wise LR chỉ có nghĩa khi backbone không bị freeze
+        paramGroups = buildParamGroups(
+            model=model,
+            headLR=config.learningRate,
+            backboneLR=config.backboneLR,
+        )
+    elif config.useLayerLR and effectiveFreezeBackbone:
+        # Staged mode giai đoạn 1: chỉ head trainable → dùng 1 group
+        print("[INFO] useLayerLR=True nhưng backbone đang bị freeze (giai đoạn 1). Dùng single param group.")
+        paramGroups = [p for p in model.parameters() if p.requires_grad]
+    else:
+        # Behavior cũ: 1 param group duy nhất
+        paramGroups = [p for p in model.parameters() if p.requires_grad]
+        
+    optimizer = torch.optim.Adam(
+        paramGroups,
+        lr=config.learningRate,
+        weight_decay=config.weightDecay,
+    )
+
+    # ── Scheduler ──────────────────────────────────────────────────────────────
+    scheduler = buildScheduler(optimizer=optimizer, config=config, numEpochs=config.numEpochs)
+
+    # ── Load Full Checkpoint State ─────────────────────────────────────────────
+    if checkpointData is not None:
+        model.load_state_dict(checkpointData["modelStateDict"])
+        if "optimizerStateDict" in checkpointData:
+            optimizer.load_state_dict(checkpointData["optimizerStateDict"])
+        if "schedulerStateDict" in checkpointData and scheduler is not None:
+            scheduler.load_state_dict(checkpointData["schedulerStateDict"])
+        print(f"[INFO] Restored model, optimizer, and scheduler state from epoch {startEpoch-1}.")
+
     # Prepare runtime config dictionary for saving
     runtimeConfig = config.to_dict()
     runtimeConfig["numClasses"] = numClasses
@@ -277,24 +351,8 @@ def main() -> None:
         useLayerLR=config.useLayerLR,
     )
 
-    # ── Handle Checkpoint Resume ───────────────────────────────────────────────
-    startEpoch = 1
-    if args.resume:
-        lastCheckpointPath = outputDir / "checkpoints" / "last.pt"
-        if lastCheckpointPath.exists():
-            print(f"[INFO] Resuming from checkpoint: {lastCheckpointPath}")
-            checkpoint = loadCheckpoint(
-                checkpointPath=str(lastCheckpointPath),
-                model=model,
-                optimizer=optimizer,
-                scheduler=scheduler,
-                mapLocation=str(device)
-            )
-            startEpoch = checkpoint.get("epoch", 0) + 1
-            trainer.bestMetric = checkpoint.get("bestMetric", float("-inf"))
-            print(f"[INFO] Restored state. Resuming from epoch {startEpoch}...")
-        else:
-            print(f"[INFO] --resume flag given but {lastCheckpointPath} not found. Starting fresh.")
+    if checkpointData is not None:
+        trainer.bestMetric = checkpointData.get("bestMetric", float("-inf"))
 
     # ── Start Training ─────────────────────────────────────────────────────────
     trainer.fit(numEpochs=config.numEpochs, config=runtimeConfig, startEpoch=startEpoch)
