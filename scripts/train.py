@@ -261,8 +261,8 @@ def main() -> None:
             checkpointEpoch = checkpointData.get("epoch", 0)
             startEpoch = checkpointEpoch + 1
             
-            # Nếu checkpoint đã qua giai đoạn unfreeze, chúng ta phải unfreeze model ngay bây giờ
-            if config.useStagedFinetuning and checkpointEpoch >= config.headOnlyEpochs:
+            # Nếu checkpoint ĐÃ QUA giai đoạn unfreeze, chúng ta phải unfreeze model ngay bây giờ
+            if config.useStagedFinetuning and checkpointEpoch > config.headOnlyEpochs:
                 print(f"[INFO] Checkpoint epoch {checkpointEpoch} > headOnlyEpochs {config.headOnlyEpochs}.")
                 print("[INFO] Unfreezing model EARLY to match checkpoint optimizer state.")
                 from src.models.modelFactory import unfreezeModel
@@ -359,6 +359,7 @@ def main() -> None:
         weightDecay=config.weightDecay,
         backboneLR=config.backboneLR if config.useLayerLR else None,
         useLayerLR=config.useLayerLR,
+        stageUnfreezeApplied=(not effectiveFreezeBackbone),
     )
 
     if checkpointData is not None:
