@@ -33,6 +33,48 @@ class TrainingConfig:
     # Khuyến nghị: bắt đầu với sampler only, chỉ bật nếu kết quả chưa đủ.
     useClassWeights: bool = False
 
+    # ── Staged Fine-tuning ────────────────────────────────────────────────────
+    # useStagedFinetuning: Bật chế độ staged — giai đoạn 1 chỉ train head,
+    # giai đoạn 2 unfreeze toàn backbone và train với LR thấp hơn.
+    # Khi bật, freezeBackbone sẽ tự động được set True cho giai đoạn 1.
+    # Default: false → behavior hiện tại không thay đổi.
+    useStagedFinetuning: bool = False
+
+    # headOnlyEpochs: Số epoch chỉ train classifier head (giai đoạn 1).
+    # Sau epoch này, backbone sẽ được unfreeze và optimizer được tạo lại.
+    # Chỉ có hiệu lực khi useStagedFinetuning=true.
+    headOnlyEpochs: int = 3
+
+    # ── Scheduler ─────────────────────────────────────────────────────────────
+    # schedulerType: Loại learning rate scheduler.
+    #   "step"          → StepLR(step_size=3, gamma=0.1) — behavior cũ
+    #   "cosine"        → CosineAnnealingLR(T_max=numEpochs)
+    #   "warmup_cosine" → Linear warmup rồi cosine decay
+    schedulerType: str = "step"
+
+    # warmupEpochs: Số epoch warmup LR từ 0 lên learningRate.
+    # Chỉ có hiệu lực khi schedulerType="warmup_cosine".
+    # Warmup giúp tránh shock gradient khi bắt đầu fine-tune backbone.
+    warmupEpochs: int = 3
+
+    # ── Layer-wise Learning Rate ──────────────────────────────────────────────
+    # useLayerLR: Bật layer-wise LR — head và backbone dùng LR khác nhau.
+    # Head: dùng learningRate (config chính)
+    # Backbone: dùng backboneLR (thấp hơn để giữ ổn định pretrained features)
+    # Default: false → behavior hiện tại (1 LR cho toàn model)
+    useLayerLR: bool = False
+
+    # backboneLR: LR cho backbone khi useLayerLR=true.
+    # Thường đặt thấp hơn learningRate 5–10 lần để tránh catastrophic forgetting.
+    backboneLR: float = 1e-4
+
+    # ── Custom Pretrained Checkpoint ──────────────────────────────────────────
+    # pretrainedPath: Đường dẫn tới file checkpoint .pt để load làm pretrained base.
+    # Nếu rỗng ("") hoặc không đặt → dùng ImageNet pretrained weights từ timm.
+    # Hỗ trợ cả format full checkpoint (có key "modelStateDict") và raw state_dict.
+    # Dùng strict=False để cho phép classifier head khác numClasses.
+    pretrainedPath: str = ""
+
     augConfig: AugConfig = field(default_factory=AugConfig)
     
     @classmethod
