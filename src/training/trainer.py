@@ -33,6 +33,7 @@ class Trainer:
         weightDecay: float = 0.0001,
         backboneLR: Optional[float] = None,
         useLayerLR: bool = False,
+        stageUnfreezeApplied: bool = False,
     ):
         self.model = model
         self.device = device
@@ -49,7 +50,7 @@ class Trainer:
         # Staged fine-tuning state
         self.useStagedFinetuning = useStagedFinetuning
         self.headOnlyEpochs = headOnlyEpochs
-        self._stageUnfreezeApplied = False  # Guard: chỉ unfreeze 1 lần
+        self._stageUnfreezeApplied = stageUnfreezeApplied  # Khởi tạo từ parameter
 
         # Lưu optimizer config để rebuild sau staged unfreeze
         self._optimizerLR = optimizerLR

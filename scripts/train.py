@@ -178,7 +178,6 @@ def main() -> None:
     model = buildModel(
         modelName=config.modelName,
         numClasses=numClasses,
-        # Nếu dùng custom pretrainedPath, không cần load ImageNet qua timm
         usePretrained=(not bool(config.pretrainedPath)),
         freezeBackbone=effectiveFreezeBackbone,
     ).to(device)
@@ -201,52 +200,11 @@ def main() -> None:
     print(f"[INFO] Model: {config.modelName} | freezeBackbone={effectiveFreezeBackbone} | staged={config.useStagedFinetuning}")
     print(f"[INFO] Params: {totalParams:,} (Total) | {trainableParams:,} (Trainable)")
 
-    # ── Loss ───────────────────────────────────────────────────────────────────
-    if config.useClassWeights:
-        from collections import Counter
-        from src.data.dataSplit import loadSplitCsv
-        
-        trainSamples = loadSplitCsv(f"{config.splitDir}/train.csv")
-        labelCounts = Counter(s.labelId for s in trainSamples)
-        total = sum(labelCounts.values())
-        
-        # Calculate inverse frequency weights to balance classes
-        weights = [total / (numClasses * labelCounts[i]) for i in range(numClasses)]
-        classWeightsTensor = torch.tensor(weights, dtype=torch.float32).to(device)
-        criterion = nn.CrossEntropyLoss(weight=classWeightsTensor)
-        print(f"[INFO] CrossEntropyLoss uses calculated class weights.")
-    else:
-        criterion = nn.CrossEntropyLoss()
-
-    # ── Optimizer ──────────────────────────────────────────────────────────────
-    if config.useLayerLR and not effectiveFreezeBackbone:
-        # Layer-wise LR chỉ có nghĩa khi backbone không bị freeze
-        paramGroups = buildParamGroups(
-            model=model,
-            headLR=config.learningRate,
-            backboneLR=config.backboneLR,
-        )
-    elif config.useLayerLR and effectiveFreezeBackbone:
-        # Staged mode giai đoạn 1: chỉ head trainable → dùng 1 group
-        print("[INFO] useLayerLR=True nhưng backbone đang bị freeze (giai đoạn 1). Dùng single param group.")
-        paramGroups = [p for p in model.parameters() if p.requires_grad]
-    else:
-        # Behavior cũ: 1 param group duy nhất
-        paramGroups = [p for p in model.parameters() if p.requires_grad]
-        
-    optimizer = torch.optim.Adam(
-        paramGroups,
-        lr=config.learningRate,
-        weight_decay=config.weightDecay,
-    )
-
-    # ── Scheduler ──────────────────────────────────────────────────────────────
-    scheduler = buildScheduler(optimizer=optimizer, config=config, numEpochs=config.numEpochs)
-
     # ── Output paths ───────────────────────────────────────────────────────────
     outputDirStr = setupColabOutput(config.outputDir, args.useGdrive)
     outputDir = Path(outputDirStr)
     outputDir.mkdir(parents=True, exist_ok=True)
+
 
     # ── Handle Checkpoint Resume (PEEK) ────────────────────────────────────────
     # Chúng ta cần biết epoch của checkpoint TRƯỚC khi tạo optimizer

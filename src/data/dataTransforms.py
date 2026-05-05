@@ -326,30 +326,36 @@ def _buildAlbumentationsTrain(inputSize: int, aug: AugConfig):
 
     # ── GaussNoise (phá nền sạch — trước normalize) ──────────────────────
     if aug.gaussNoiseEnabled:
-        # Albumentations 1.4+ dùng std_range, phiên bản cũ dùng var_limit.
-        # Chúng ta ưu tiên API mới để xóa warning trên Colab.
+        # Albumentations 1.4+ dùng 'std', phiên bản cũ dùng 'var_limit'.
+        # Dùng kwargs dict để tránh TypeError/UserWarning lúc khởi tạo.
         try:
-            # Ước lượng std từ variance (sqrt(var))
-            std_min = aug.gaussNoiseVarMin ** 0.5
-            std_max = aug.gaussNoiseVarMax ** 0.5
-            albu_ops.append(A.GaussNoise(std_range=(std_min, std_max), p=aug.gaussNoiseP))
+            # Albumentations 1.4+ (mới nhất)
+            albu_ops.append(A.GaussNoise(std=(aug.gaussNoiseVarMin**0.5, aug.gaussNoiseVarMax**0.5), p=aug.gaussNoiseP))
         except (TypeError, ValueError):
-            albu_ops.append(A.GaussNoise(var_limit=(aug.gaussNoiseVarMin, aug.gaussNoiseVarMax), p=aug.gaussNoiseP))
+            try:
+                # Albumentations ~1.4.0 (trung gian)
+                std_min = aug.gaussNoiseVarMin ** 0.5
+                std_max = aug.gaussNoiseVarMax ** 0.5
+                albu_ops.append(A.GaussNoise(std_range=(std_min, std_max), p=aug.gaussNoiseP))
+            except (TypeError, ValueError):
+                # Fallback cho bản cũ (< 1.4)
+                albu_ops.append(A.GaussNoise(var_limit=(aug.gaussNoiseVarMin, aug.gaussNoiseVarMax), p=aug.gaussNoiseP))
 
     # ── CoarseDropout (nhiều patch nhỏ — chống shortcut nền) ─────────────
     if aug.coarseDropoutEnabled:
         try:
-            # Albumentations 1.4+ API
+            # Albumentations 1.4+ API: 'fill' thay cho 'fill_value'
             albu_ops.append(
                 A.CoarseDropout(
                     num_holes_range=(1, aug.coarseDropoutMaxHoles),
                     hole_height_range=(8, aug.coarseDropoutHoleHeight),
                     hole_width_range=(8, aug.coarseDropoutHoleWidth),
-                    fill_value=128,
+                    fill=128,
                     p=aug.coarseDropoutP,
                 )
             )
         except (TypeError, ValueError):
+            # Fallback cho bản cũ
             albu_ops.append(
                 A.CoarseDropout(
                     max_holes=aug.coarseDropoutMaxHoles,
