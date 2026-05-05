@@ -268,6 +268,16 @@ def main() -> None:
                 from src.models.modelFactory import unfreezeModel
                 unfreezeModel(model)
                 effectiveFreezeBackbone = False
+                
+            # Kiểm tra xem checkpoint cũ có mấy optimizer parameter groups.
+            # Nếu checkpoint cũ (trước bản update) chỉ có 1 group, mà config mới đòi 2 groups (useLayerLR),
+            # thì pytorch sẽ báo lỗi ValueError. Do đó cần auto fallback.
+            if "optimizerStateDict" in checkpointData:
+                ckpt_groups = len(checkpointData["optimizerStateDict"]["param_groups"])
+                if config.useLayerLR and not effectiveFreezeBackbone and ckpt_groups == 1:
+                    print(f"⚠️ [WARNING] Checkpoint có {ckpt_groups} optimizer group, nhưng config yêu cầu Layer-wise LR (2 groups).")
+                    print(f"⚠️ [WARNING] Tự động TẮT useLayerLR để có thể Resume thành công từ checkpoint cũ.")
+                    config.useLayerLR = False
         else:
             print(f"[INFO] --resume flag given but {lastCheckpointPath} not found. Starting fresh.")
 
