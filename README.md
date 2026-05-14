@@ -6,7 +6,7 @@ Dự án phục vụ học phần **"Thực tập cơ sở"** (GVHD: **Thầy Ng
 
 ---
 
-## 1. Tổng quan (Overview)
+## 1. Tổng quan  
 
 **PlantDoc AI** là một hệ thống Deep Learning đầu cuối (end-to-end) giải quyết bài toán phân loại hình ảnh bệnh trên lá cây. Không chỉ dừng lại ở việc đưa ra dự đoán "hộp đen" (black-box), dự án còn tập trung vào **tính minh bạch** thông qua Grad-CAM và cung cấp các **khuyến nghị xử lý nông nghiệp** cụ thể.
 
@@ -15,37 +15,23 @@ Dự án phục vụ học phần **"Thực tập cơ sở"** (GVHD: **Thầy Ng
 
 ---
 
-## 2. Tính năng nổi bật (Key Features)
+## 2. Tính năng nổi bật
 
-*   ✅ **Phân loại đa lớp (Multi-class Classification):** Nhận diện chính xác loại cây và bệnh lý dựa trên tập dữ liệu PlantVillage mở rộng.
-*   ✅ **Giải thích mô hình (Grad-CAM):** Trực quan hóa vùng ảnh (heatmap) mà mô hình chú ý nhất khi đưa ra dự đoán.
+*   ✅ **Phân loại đa lớp:** Nhận diện chính xác loại cây và bệnh lý dựa trên tập dữ liệu PlantVillage mở rộng.
+*   ✅ **Giải thích mô hình:** Trực quan hóa vùng ảnh (heatmap) mà mô hình chú ý nhất khi đưa ra dự đoán.
 *   ✅ **Kiểm soát đầu vào & Cảnh báo OOD:** Sử dụng Entropy-based Detection và Confidence Thresholding để cảnh báo nếu ảnh đầu vào không hợp lệ hoặc có độ tin cậy thấp.
-*   ✅ **Khuyến nghị xử lý (Recommendations):** Cung cấp nguyên nhân, triệu chứng và hướng dẫn điều trị/phòng ngừa chi tiết cho từng loại bệnh.
-*   ✅ **Huấn luyện linh hoạt (Config-driven Training):** Hỗ trợ Staged Fine-tuning, Layer-wise Learning Rate, Weighted Random Sampler và Augmentation đa dạng thông qua file YAML.
+*   ✅ **Khuyến nghị xử lý:** Cung cấp nguyên nhân, triệu chứng và hướng dẫn điều trị/phòng ngừa chi tiết cho từng loại bệnh.
+*   ✅ **Huấn luyện linh hoạt:** Hỗ trợ Staged Fine-tuning, Layer-wise Learning Rate, Weighted Random Sampler và Augmentation đa dạng thông qua file YAML.
 *   ✅ **Giao diện Web chuyên nghiệp:** Ứng dụng Streamlit hiển thị rõ ràng thông tin mô hình, kết quả dự đoán Top-K, Grad-CAM và khuyến nghị.
 
 ---
 
-## 3. Kiến trúc dự án (Project Architecture)
+## 3. Kiến trúc dự án
 
-```text
-[Dataset] → scripts/createSplits.py → [Train/Val/Test CSV]
-                                             ↓
-[configs/*.yaml] ─────────────────────→ scripts/train.py → [artifacts/checkpoints]
-                                             ↓
-                                      scripts/evaluate.py (Metrics, Confusion Matrix)
-                                             ↓
-[User Image] → app.py (Streamlit) / scripts/predict.py
-                     ↓
-             Inference Pipeline
-             (Image Preprocessing → Feature Extraction → Prediction + Grad-CAM)
-                     ↓
-[Top-K Results] + [Grad-CAM Overlay] + [Agricultural Recommendations] + [OOD Warnings]
-```
+![Project Architecture](img/flow_diagram.png)
 
----
-
-## 4. Cấu trúc thư mục (Repository Structure)
+ 
+## 4. Cấu trúc thư mục 
 
 ```text
 PlantDocAI/
@@ -72,7 +58,7 @@ PlantDocAI/
 
 ---
 
-## 5. Hướng dẫn cài đặt (Installation)
+## 5. Hướng dẫn cài đặt 
 
 Yêu cầu: **Python 3.9+**
 
@@ -95,7 +81,7 @@ pip install -r requirements.txt
 
 ---
 
-## 6. Chuẩn bị dữ liệu (Dataset Preparation)
+## 6. Chuẩn bị dữ liệu 
 
 1. Tải bộ dữ liệu gốc [extended dataset](https://drive.google.com/file/d/1l4EuesCfAA3NyNTQV5gC7Ua1oi-1Y_Mp/view?usp=drive_link) và giải nén vào thư mục `data/extended/` (hoặc thư mục tương ứng trong config).
    Cấu trúc mong đợi:
@@ -112,7 +98,7 @@ pip install -r requirements.txt
 
 ---
 
-## 7. Cấu hình mô hình (Configuration)
+## 7. Cấu hình mô hình 
 
 Mọi thay đổi về siêu tham số (hyperparameters), đường dẫn dữ liệu hay augmentation đều nằm trong `configs/`.
 Ví dụ một số cài đặt quan trọng trong `configs/extended.yaml`:
@@ -124,7 +110,7 @@ Ví dụ một số cài đặt quan trọng trong `configs/extended.yaml`:
 
 ---
 
-## 8. Huấn luyện (Training)
+## 8. Huấn luyện 
 
 Để bắt đầu huấn luyện mô hình với cấu hình `extended.yaml`:
 
@@ -142,7 +128,7 @@ python scripts/train.py --config configs/extended.yaml
 
 ---
 
-## 9. Đánh giá (Evaluation)
+## 9. Đánh giá
 
 Để đánh giá mô hình đã huấn luyện trên tập Test (tính toán Accuracy, F1-macro, xuất Confusion Matrix):
 
@@ -164,7 +150,7 @@ python scripts/predict.py --image path/to/leaf.jpg --modelDir artifacts/mobilene
 
 ---
 
-## 11. Giao diện Web (Streamlit App)
+## 11. Giao diện Web
 
 Dự án cung cấp một giao diện web chuyên nghiệp để demo trực tiếp.
 
@@ -174,10 +160,9 @@ streamlit run app.py
 
 *   **Chức năng:** Tải ảnh lên, ứng dụng sẽ tự động chạy Inference, sinh ảnh Grad-CAM, hiển thị phân bố Top-K và đề xuất xử lý bệnh tật.
 *   **Safety Warning:** Ứng dụng sẽ hiện cảnh báo nếu độ tin cậy thấp hoặc có dấu hiệu ảnh tải lên nằm ngoài phân phối dữ liệu (không phải lá cây).
-
 ---
 
-## 12. Hạn chế và Hướng phát triển (Limitations & Future Work)
+## 12. Hạn chế và Hướng phát triển
 
 ### Hạn chế hiện tại:
 *   **Domain Gap:** Mô hình được huấn luyện chủ yếu trên ảnh chụp trong điều kiện phòng thí nghiệm (PlantVillage) với nền đơn giản. Độ chính xác có thể giảm khi áp dụng trên ảnh thực địa với nền phức tạp.
