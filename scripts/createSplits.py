@@ -44,7 +44,7 @@ def main():
     data_path = Path(args.dataDir)
     if not data_path.exists() or not data_path.is_dir():
         print(f"[LỖI] Thư mục dữ liệu (dataDir) không tồn tại hoặc sai đường dẫn: {args.dataDir}")
-        print("Vui lòng tải ảnh dataset về máy, ví dụ đặt tại \PlantDocAI\data\extended\train")
+        print(r"Vui lòng tải ảnh dataset về máy, ví dụ đặt tại \PlantDocAI\data\extended\train")
         sys.exit(1)
         
     out_path = Path(args.outDir)
