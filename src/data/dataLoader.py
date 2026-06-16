@@ -1,4 +1,5 @@
 # src/data/dataLoader.py
+"""DataLoader construction with optional weighted sampling for class imbalance."""
 from __future__ import annotations
 
 from collections import Counter
@@ -50,36 +51,25 @@ def buildDataLoaders(
     valDs = PlantVillageDataset(rootDir=dataDir, samples=valSamples, transform=tf["val"], returnPath=returnPath)
     testDs = PlantVillageDataset(rootDir=dataDir, samples=testSamples, transform=tf["test"], returnPath=returnPath)
 
- 
     if pinMemory is None:
         pinMemory = bool(torch.cuda.is_available())
+
+    # ── Shared DataLoader kwargs ──────────────────────────────────────────
+    commonKwargs = dict(
+        batch_size=batchSize, num_workers=numWorkers,
+        pin_memory=pinMemory, drop_last=False,
+    )
 
     # ── Train DataLoader: sampler hoặc shuffle ────────────────────────────
     if useWeightedSampler:
         sampler = _buildWeightedSampler(trainSamples)
-        print(f"[INFO] WeightedRandomSampler enabled — oversampling minority classes.")
-        trainLoader = DataLoader(
-            trainDs, batch_size=batchSize, sampler=sampler,
-            num_workers=numWorkers, pin_memory=pinMemory,
-            drop_last=False,
-        )
+        print("[INFO] WeightedRandomSampler enabled — oversampling minority classes.")
+        trainLoader = DataLoader(trainDs, sampler=sampler, **commonKwargs)
     else:
-        trainLoader = DataLoader(
-            trainDs, batch_size=batchSize, shuffle=True,
-            num_workers=numWorkers, pin_memory=pinMemory,
-            drop_last=False,
-        )
+        trainLoader = DataLoader(trainDs, shuffle=True, **commonKwargs)
 
-    valLoader = DataLoader(
-        valDs, batch_size=batchSize, shuffle=False,
-        num_workers=numWorkers, pin_memory=pinMemory,
-        drop_last=False,
-    )
-    testLoader = DataLoader(
-        testDs, batch_size=batchSize, shuffle=False,
-        num_workers=numWorkers, pin_memory=pinMemory,
-        drop_last=False,
-    )
+    valLoader = DataLoader(valDs, shuffle=False, **commonKwargs)
+    testLoader = DataLoader(testDs, shuffle=False, **commonKwargs)
 
     scanDs = PlantVillageDataset(rootDir=dataDir, samples=None, transform=None)
     classToId, _ = scanDs.getClassMapping()

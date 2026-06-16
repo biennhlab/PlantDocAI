@@ -18,10 +18,11 @@ class SplitConfig:
     seed: int = 42
 
 def createSplits(
-    dataDir,
-    outDir,
+    dataDir: str,
+    outDir: str,
     splitConfig: SplitConfig,
-): 
+) -> Dict[str, str]:
+    """Create stratified train/val/test splits and save as CSV files."""
     os.makedirs(outDir, exist_ok=True)
 
     baseDs = PlantVillageDataset(rootDir=dataDir, samples=None, transform=None)
@@ -68,7 +69,8 @@ def createSplits(
 
     return paths
 
-def loadSplitCsv(csvPath):
+def loadSplitCsv(csvPath: str) -> List[SampleItem]:
+    """Load a split CSV file into a list of SampleItem."""
     if not os.path.isfile(csvPath):
         raise FileNotFoundError(f"Split CSV not found: {csvPath}")
 
@@ -83,14 +85,14 @@ def loadSplitCsv(csvPath):
         raise ValueError(f"No rows loaded from split CSV: {csvPath}")
     return samples
 
-def _writeSamplesCsv(outPath, samples):
+def _writeSamplesCsv(outPath: str, samples: List[SampleItem]) -> None:
     with open(outPath, "w", newline="", encoding="utf-8") as f:
         writer = csv.DictWriter(f, fieldnames=["imagePath", "labelId"])
         writer.writeheader()
         for s in samples:
             writer.writerow({"imagePath": s.imagePath, "labelId": s.labelId})
 
-def _writeClassesCsv(outPath, classToId):
+def _writeClassesCsv(outPath: str, classToId: Dict[str, int]) -> None:
     with open(outPath, "w", newline="", encoding="utf-8") as f:
         writer = csv.DictWriter(f, fieldnames=["className", "labelId"])
         writer.writeheader()
