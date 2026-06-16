@@ -1,0 +1,87 @@
+experimentName: "efficientnet_b0_baseline"
+dataDir: "data/extended/plantVillage/train"
+splitDir: "data/splits"
+outputDir: "artifacts/efficientnet_b0_baseline"
+
+modelName: "efficientnet_b0"
+imageSize: 224
+freezeBackbone: false
+
+# Thông số chuẩn hóa (Mặc định: ImageNet)
+mean: [0.485, 0.456, 0.406]
+std: [0.229, 0.224, 0.225]
+
+batchSize: 32
+numEpochs: 10
+learningRate: 0.001
+weightDecay: 0.0001
+numWorkers: 4
+topK: 3
+device: "auto"
+
+# ─────────────────────────────────────────────────────────────────
+# Class imbalance handling
+# ─────────────────────────────────────────────────────────────────
+# Dùng WeightedRandomSampler cho train DataLoader để oversample class thiểu số.
+useWeightedSampler: true
+
+# Có thể bật thêm class weights cho CrossEntropyLoss (thường thì dùng sampler là đủ)
+useClassWeights: false
+
+# ─────────────────────────────────────────────────────────────────
+# Cấu hình Augmentation
+# Tất cả giá trị ánh xạ trực tiếp tới các trường AugConfig
+# trong src/data/dataTransforms.py
+# ─────────────────────────────────────────────────────────────────
+augmentation:
+
+  # ── Hình học ───────────────────────────────────────────────────
+  rotationDegrees: 180
+  cropScaleMin: 0.70
+  cropScaleMax: 1.00
+  hflip: true
+  vflip: true
+  elasticEnabled: true
+  elasticAlpha: 30.0   
+  elasticSigma: 5.0    
+  elasticP: 0.30       
+
+  # ── Màu sắc ────────────────────────────────────────────────────
+  brightnessJitter: 0.25   
+  contrastJitter: 0.20     
+  saturationJitter: 0.10   
+  hueJitter: 0.00
+
+  # ── Làm mờ ─────────────────────────────────────────────────────
+  blurEnabled: true
+  blurKernelMin: 3      
+  blurKernelMax: 5      
+  blurSigmaMin: 0.1
+  blurSigmaMax: 1.0
+  blurP: 0.20           
+
+  # ── Độ sắc nét ─────────────────────────────────────────────────
+  sharpnessEnabled: true
+  sharpnessFactor: 1.5   
+  sharpnessP: 0.20
+
+  # ── Xóa vùng nhỏ ───────────────────────────────────────────────
+  eraseEnabled: true
+  eraseScaleMin: 0.02   
+  eraseScaleMax: 0.08   
+  eraseRatio: 1.0       
+  eraseP: 0.20
+  
+  # ── Anti background shortcuts ──────────────────────────────────
+  coarseDropoutEnabled: true
+  coarseDropoutMaxHoles: 6
+  coarseDropoutHoleHeight: 16
+  coarseDropoutHoleWidth: 16
+  coarseDropoutP: 0.30
+  
+  gaussNoiseEnabled: true
+  gaussNoiseVarMin: 5.0
+  gaussNoiseVarMax: 25.0
+  gaussNoiseP: 0.25
+  
+  grayscaleP: 0.05
