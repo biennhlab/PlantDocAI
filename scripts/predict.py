@@ -41,18 +41,34 @@ def main():
             print(f"[INFO] Grad-CAM overlay saved to: {args.output}")
         else:
             # Chạy dự đoán thuần túy
-            predictions = pipeline.predict(imagePath=args.image, topK=args.topK)
+            result = pipeline.predict(imagePath=args.image, topK=args.topK)
+            predictions = result["predictions"]
             
     except Exception as e:
         print(f"[ERROR] Operation failed: {e}")
         sys.exit(1)
 
+    # ── OOD Detection Result ─────────────────────────────────────────────
+    ood = result["ood"]
+    print("\n--- OOD DETECTION ---")
+    print(f"  Energy Score : {ood['energy_score']:.4f}")
+    print(f"  Threshold    : {ood['threshold']}")
+    print(f"  Temperature  : {ood['temperature']}")
+    if ood["is_ood"]:
+        print(f"  Status       : ⚠️  OUT-OF-DISTRIBUTION")
+        print(f"  Warning      : {ood['warning_message']}")
+    else:
+        print(f"  Status       : ✓  IN-DISTRIBUTION")
+
+    # ── Prediction Results ────────────────────────────────────────────────
     print("\n--- PREDICTION RESULTS ---")
-    for i, result in enumerate(predictions):
-        classId = result["classId"]
-        className = result["className"]
-        confidence = result["confidence"]
-        print(f"{i+1}. [{classId:>2d}] {className}: {confidence * 100:.2f}%")
+    if ood["is_ood"]:
+        print("  (Kết quả dưới đây chỉ mang tính tham khảo do ảnh có thể nằm ngoài phân phối)")
+    for i, pred in enumerate(predictions):
+        classId = pred["classId"]
+        className = pred["className"]
+        confidence = pred["confidence"]
+        print(f"  {i+1}. [{classId:>2d}] {className}: {confidence * 100:.2f}%")
 
 if __name__ == "__main__":
     main()
