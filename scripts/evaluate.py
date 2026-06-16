@@ -16,7 +16,7 @@ sys.path.append(str(Path(__file__).resolve().parent.parent))
 
 from src.data.dataLoader import buildDataLoaders
 from src.models.modelFactory import buildModel
-from src.training.checkpoint import loadCheckpoint
+from src.training.checkpoint import loadCheckpoint, findCheckpoint
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 
@@ -71,6 +71,8 @@ def main():
     
     # 2. Build Model and load Checkpoint
     modelName = config.get("modelName", "mobilenetv2_100")
+    # Legacy path: old checkpoints trained with torchvision mobilenet_v2
+    # have different weight keys than timm's mobilenetv2_100.
     if modelName == "mobilenetV2":
         import torchvision.models as models
         logging.info(f"Building legacy torchvision model 'mobilenet_v2' with {numClasses} classes...")
@@ -84,12 +86,7 @@ def main():
             freezeBackbone=False
         ).to(device)
     
-    weightsPath = None
-    for p in ["checkpoints/best.pt", "best.pt", "checkpoints/last.pt"]:
-        if (modelDir / p).exists():
-            weightsPath = modelDir / p
-            break
-            
+    weightsPath = findCheckpoint(modelDir)
     if not weightsPath:
         logging.error(f"Could not find checkpoint in {modelDir}")
         return
