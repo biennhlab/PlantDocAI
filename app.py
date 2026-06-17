@@ -256,6 +256,7 @@ def _runAnalysis(pipeline, image, topK, showGradCAM, gradcamAlpha):
 # Render Functions
 # ─────────────────────────────────────────────────────────────────────────────
 
+
 def _renderSidebar(artifactDirs):
     """Sidebar: model selector, config, info."""
     with st.sidebar:
@@ -298,6 +299,7 @@ def _renderSidebar(artifactDirs):
         )
 
     return selectedDir, topK, showGradCAM, gradcamAlpha, modelInfoPlaceholder
+
 
 
 def _renderModelInfo(placeholder, pipeline):
@@ -480,11 +482,11 @@ def _renderWarnings(predictions, imageWarnings):
     # Entropy-based OOD warning
     normalizedEntropy = _computeEntropy(predictions)
     if normalizedEntropy > ENTROPY_WARNING_RATIO and confidence < HIGH_CONFIDENCE:
-        st.warning(
-            "**Phân bố dự đoán phân tán** — Mô hình không thể phân biệt rõ ràng "
+        st.error(
+            "**⚠️ Cảnh báo OOD — Phân bố dự đoán phân tán** — Mô hình không thể phân biệt rõ ràng "
             "giữa các lớp. Ảnh có thể không phải lá cây hoặc không thuộc "
             "các loại bệnh đã train.",
-            icon="🔀",
+            icon="🚨",
         )
         hasWarning = True
 
@@ -543,6 +545,17 @@ def main():
     selectedDir, topK, showGradCAM, gradcamAlpha, modelInfoPlaceholder = \
         _renderSidebar(artifactDirs)
 
+    # Handle model change: reset results cache if model changed
+    if st.session_state.get("_selectedModel") != selectedDir:
+        st.session_state["_selectedModel"] = selectedDir
+        # Clear cached results and keys
+        st.session_state.pop("results", None)
+        st.session_state.pop("_lastCacheKey", None)
+        # Increment uploader version to reset file uploader widget
+        st.session_state["uploader_version"] = st.session_state.get("uploader_version", 0) + 1
+        st.info(f"✅ Đã chuyển sang mô hình `{selectedDir}`. Vui lòng tải ảnh và chạy dự đoán lại.")
+        # Trigger rerun to apply cleared state and new uploader key
+        st.rerun()
     # ── Header ───────────────────────────────────────────────────────────
     _renderHeader()
 
@@ -562,13 +575,13 @@ def main():
         st.stop()
 
     # ── Upload ───────────────────────────────────────────────────────────
-    st.markdown('<p class="section-header">📤 Tải ảnh lên</p>',
-                unsafe_allow_html=True)
+    st.markdown('<p class="section-header">📤 Tải ảnh lên</p>', unsafe_allow_html=True)
     uploadedFile = st.file_uploader(
         "Chọn ảnh lá cây cần phân tích",
         type=list(ALLOWED_EXTENSIONS),
         help="Hỗ trợ JPG, PNG, WebP, BMP, TIFF. Tối đa 10 MB.",
         label_visibility="collapsed",
+        key=f"file_uploader_{st.session_state.get('uploader_version', 0)}",
     )
 
     if uploadedFile is None:
