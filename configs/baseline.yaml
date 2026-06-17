@@ -1,5 +1,5 @@
 experimentName: "mobilenetV2Baseline"
-dataDir: "data/baseline/train"
+dataDir: "data/plantvillage/train"
 splitDir: "data/splits"
 outputDir: "artifacts/mobilenetV2Baseline"
 
