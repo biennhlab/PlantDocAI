@@ -1,5 +1,5 @@
 experimentName: "mobilenetV2Baseline"
-dataDir: "data/extended/plantVillage/train"
+dataDir: "data/baseline/train"
 splitDir: "data/splits"
 outputDir: "artifacts/mobilenetV2Baseline"
 
@@ -12,7 +12,7 @@ mean: [0.485, 0.456, 0.406]
 std: [0.229, 0.224, 0.225]
 
 batchSize: 32
-numEpochs: 5
+numEpochs: 15
 learningRate: 0.001
 weightDecay: 0.0001
 numWorkers: 2
@@ -22,8 +22,8 @@ device: "auto"
 # ─────────────────────────────────────────────────────────────────
 # Class imbalance handling
 # ─────────────────────────────────────────────────────────────────
-# Dùng WeightedRandomSampler cho train DataLoader để oversample class thiểu số.
-useWeightedSampler: true
+# Baseline KHÔNG dùng WeightedRandomSampler để minh họa vấn đề class imbalance.
+useWeightedSampler: false
 
 # Có thể bật thêm class weights cho CrossEntropyLoss (thường thì dùng sampler là đủ)
 useClassWeights: false
@@ -50,8 +50,8 @@ augmentation:
   vflip: true
 
   # Biến dạng đàn hồi: mô phỏng độ cong / nhăn của bề mặt lá.
-  # Yêu cầu albumentations. Đặt elasticEnabled: false nếu chưa cài.
-  elasticEnabled: true
+  # Đã tắt cho model baseline.
+  elasticEnabled: false
   elasticAlpha: 30.0   # biên độ dịch chuyển — giữ thấp để không phá hình dạng tổn thương
   elasticSigma: 5.0    # hệ số làm mượt
   elasticP: 0.30       # áp dụng 30% thời gian
@@ -67,8 +67,8 @@ augmentation:
   hueJitter: 0.00
 
   # ── Làm mờ ─────────────────────────────────────────────────────
-  # Mô phỏng rung tay / ẩm ướt trên ống kính khi chụp ảnh thực địa.
-  blurEnabled: true
+  # Đã tắt cho model baseline.
+  blurEnabled: false
   blurKernelMin: 3      # phải là số lẻ; 3 = mờ nhẹ nhất có thể
   blurKernelMax: 5      # giữ nhỏ — bảo toàn chi tiết texture tổn thương
   blurSigmaMin: 0.1
@@ -76,35 +76,33 @@ augmentation:
   blurP: 0.20           # xác suất 20% — hầu hết ảnh giữ nguyên độ sắc nét
 
   # ── Độ sắc nét ─────────────────────────────────────────────────
-  # Mô phỏng output camera thực địa độ phân giải cao (nhấn mạnh cạnh bệnh).
-  sharpnessEnabled: true
+  # Đã tắt cho model baseline.
+  sharpnessEnabled: false
   sharpnessFactor: 1.5   # 1.0 = không đổi, >1 = sắc hơn
   sharpnessP: 0.20
 
   # ── Xóa vùng nhỏ ───────────────────────────────────────────────
-  # Xóa một vùng cực nhỏ (2–8% ảnh) với fill màu xám trung tính (value=0).
-  # Mục đích: ngăn model ghi nhớ patch texture nền cụ thể.
-  # Scale được giữ cực nhỏ — đây KHÔNG phải RandomErasing thông thường cho
-  # regularization (patch lớn có nguy cơ che tổn thương duy nhất trên lá nhỏ).
-  eraseEnabled: true
+  # Đã tắt cho model baseline.
+  eraseEnabled: false
   eraseScaleMin: 0.02   # 2% diện tích ảnh — rất nhỏ
   eraseScaleMax: 0.08   # tối đa 8% diện tích ảnh — vẫn còn nhỏ
   eraseRatio: 1.0       # chỉ patch vuông (dự đoán được)
   eraseP: 0.20
   
   # ── Anti background shortcuts ──────────────────────────────────
-  coarseDropoutEnabled: true
+  # Đã tắt cho model baseline.
+  coarseDropoutEnabled: false
   coarseDropoutMaxHoles: 6
   coarseDropoutHoleHeight: 16
   coarseDropoutHoleWidth: 16
   coarseDropoutP: 0.30
   
-  gaussNoiseEnabled: true
+  gaussNoiseEnabled: false
   gaussNoiseVarMin: 5.0
   gaussNoiseVarMax: 25.0
   gaussNoiseP: 0.25
   
-  grayscaleP: 0.05
+  grayscaleP: 0.00
 
 # ─────────────────────────────────────────────────────────────────
 # Staged Fine-tuning
