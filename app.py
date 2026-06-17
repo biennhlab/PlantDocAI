@@ -1,14 +1,16 @@
 # app.py
 """
-PlantDocAI — Streamlit Demo App.
+PlantDocAI — Ứng dụng nhận diện bệnh lá cây tích hợp AI giải thích được.
 
-Demo phân loại bệnh lá cây sử dụng mô hình đã train.
 Tái sử dụng hoàn toàn InferencePipeline từ src/evaluation/predictor.py.
+Không viết lại logic predict — chỉ gọi pipeline API.
 
 Chạy: streamlit run app.py
 """
 
 import sys
+import math
+import logging
 from pathlib import Path
 
 # Đảm bảo project root trong sys.path
@@ -19,6 +21,8 @@ if str(PROJECT_ROOT) not in sys.path:
 import streamlit as st
 from PIL import Image
 
+logger = logging.getLogger(__name__)
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Constants
 # ─────────────────────────────────────────────────────────────────────────────
@@ -28,51 +32,85 @@ ALLOWED_EXTENSIONS = {"png", "jpg", "jpeg", "webp", "bmp", "tiff"}
 MIN_IMAGE_SIZE = 32
 MAX_FILE_SIZE_MB = 10
 
+# Confidence thresholds
+HIGH_CONFIDENCE = 0.80
+LOW_CONFIDENCE = 0.50
+VERY_LOW_CONFIDENCE = 0.30
+
+# Entropy threshold cho OOD warning (uniform distribution trên 38 classes ~ 5.25)
+ENTROPY_WARNING_RATIO = 0.55  # cảnh báo nếu entropy > 55% của max entropy
+
+
 # ─────────────────────────────────────────────────────────────────────────────
-# Disease Recommendations
+# CSS
 # ─────────────────────────────────────────────────────────────────────────────
 
-RECOMMENDATIONS = {
-    "Apple___Apple_scab": "Bệnh ghẻ táo — Cần kiểm tra và loại bỏ lá bị nhiễm. Tham khảo chuyên gia nông nghiệp về biện pháp phòng trừ phù hợp.",
-    "Apple___Black_rot": "Bệnh thối đen táo — Loại bỏ quả và cành bị nhiễm. Đảm bảo vệ sinh vườn tốt.",
-    "Apple___Cedar_apple_rust": "Bệnh rỉ sắt táo — Tránh trồng gần cây tuyết tùng. Tham khảo chuyên gia về thuốc bảo vệ thực vật phù hợp.",
-    "Apple___healthy": "Lá táo khỏe mạnh — Tiếp tục chăm sóc và theo dõi định kỳ.",
-    "Blueberry___healthy": "Lá việt quất khỏe mạnh — Tiếp tục chăm sóc và theo dõi định kỳ.",
-    "Cherry_(including_sour)___Powdery_mildew": "Bệnh phấn trắng anh đào — Đảm bảo thông thoáng gió. Tham khảo chuyên gia về biện pháp xử lý.",
-    "Cherry_(including_sour)___healthy": "Lá anh đào khỏe mạnh — Tiếp tục chăm sóc và theo dõi định kỳ.",
-    "Corn_(maize)___Cercospora_leaf_spot Gray_leaf_spot": "Bệnh đốm xám lá ngô — Luân canh cây trồng và sử dụng giống kháng bệnh nếu có.",
-    "Corn_(maize)___Common_rust_": "Bệnh rỉ sắt ngô — Theo dõi mức độ lây lan. Tham khảo chuyên gia về giống kháng bệnh.",
-    "Corn_(maize)___Northern_Leaf_Blight": "Bệnh cháy lá phía bắc — Sử dụng giống kháng bệnh và luân canh cây trồng.",
-    "Corn_(maize)___healthy": "Lá ngô khỏe mạnh — Tiếp tục chăm sóc và theo dõi định kỳ.",
-    "Grape___Black_rot": "Bệnh thối đen nho — Loại bỏ quả và lá bị nhiễm. Đảm bảo vệ sinh vườn.",
-    "Grape___Esca_(Black_Measles)": "Bệnh Esca nho — Bệnh phức tạp, cần tham khảo chuyên gia nông nghiệp.",
-    "Grape___Leaf_blight_(Isariopsis_Leaf_Spot)": "Bệnh cháy lá nho — Loại bỏ lá bị nhiễm và cải thiện thông gió.",
-    "Grape___healthy": "Lá nho khỏe mạnh — Tiếp tục chăm sóc và theo dõi định kỳ.",
-    "Orange___Haunglongbing_(Citrus_greening)": "Bệnh vàng lá gân xanh cam — Bệnh nghiêm trọng, cần báo cáo cơ quan nông nghiệp địa phương.",
-    "Peach___Bacterial_spot": "Bệnh đốm vi khuẩn đào — Sử dụng giống kháng bệnh. Tham khảo chuyên gia về biện pháp phòng trừ.",
-    "Peach___healthy": "Lá đào khỏe mạnh — Tiếp tục chăm sóc và theo dõi định kỳ.",
-    "Pepper,_bell___Bacterial_spot": "Bệnh đốm vi khuẩn ớt chuông — Sử dụng hạt giống sạch bệnh và luân canh cây trồng.",
-    "Pepper,_bell___healthy": "Lá ớt chuông khỏe mạnh — Tiếp tục chăm sóc và theo dõi định kỳ.",
-    "Potato___Early_blight": "Bệnh cháy sớm khoai tây — Luân canh cây trồng và loại bỏ tàn dư thực vật.",
-    "Potato___Late_blight": "Bệnh mốc sương khoai tây — Bệnh nguy hiểm, cần xử lý kịp thời. Tham khảo chuyên gia.",
-    "Potato___healthy": "Lá khoai tây khỏe mạnh — Tiếp tục chăm sóc và theo dõi định kỳ.",
-    "Raspberry___healthy": "Lá mâm xôi khỏe mạnh — Tiếp tục chăm sóc và theo dõi định kỳ.",
-    "Soybean___healthy": "Lá đậu nành khỏe mạnh — Tiếp tục chăm sóc và theo dõi định kỳ.",
-    "Squash___Powdery_mildew": "Bệnh phấn trắng bí — Cải thiện thông gió và tránh tưới lên lá.",
-    "Strawberry___Leaf_scorch": "Bệnh cháy lá dâu tây — Loại bỏ lá bị nhiễm và đảm bảo thoát nước tốt.",
-    "Strawberry___healthy": "Lá dâu tây khỏe mạnh — Tiếp tục chăm sóc và theo dõi định kỳ.",
-    "Tomato___Bacterial_spot": "Bệnh đốm vi khuẩn cà chua — Sử dụng hạt giống sạch bệnh và tránh tưới trên lá.",
-    "Tomato___Early_blight": "Bệnh cháy sớm cà chua — Luân canh cây trồng và loại bỏ tàn dư thực vật.",
-    "Tomato___Late_blight": "Bệnh mốc sương cà chua — Bệnh nguy hiểm, cần xử lý kịp thời.",
-    "Tomato___Leaf_Mold": "Bệnh mốc lá cà chua — Cải thiện thông gió trong nhà kính.",
-    "Tomato___Septoria_leaf_spot": "Bệnh đốm lá Septoria cà chua — Loại bỏ lá bị nhiễm từ dưới lên.",
-    "Tomato___Spider_mites Two-spotted_spider_mite": "Nhện đỏ hai chấm trên cà chua — Kiểm tra mặt dưới lá. Tham khảo biện pháp sinh học.",
-    "Tomato___Target_Spot": "Bệnh đốm vòng cà chua — Luân canh và cải thiện thoát nước.",
-    "Tomato___Tomato_Yellow_Leaf_Curl_Virus": "Virus xoăn vàng lá cà chua — Kiểm soát bọ phấn trắng, sử dụng giống kháng.",
-    "Tomato___Tomato_mosaic_virus": "Virus khảm cà chua — Vệ sinh dụng cụ, loại bỏ cây bệnh.",
-    "Tomato___healthy": "Lá cà chua khỏe mạnh — Tiếp tục chăm sóc và theo dõi định kỳ.",
-}
+APP_CSS = """
+<style>
+    /* Metric cards */
+    div[data-testid="stMetric"] {
+        background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+        border: 1px solid #dee2e6;
+        border-radius: 12px;
+        padding: 16px 20px;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+    }
+    div[data-testid="stMetric"] label {
+        font-size: 0.85rem !important;
+        color: #6c757d !important;
+        font-weight: 500 !important;
+    }
+    div[data-testid="stMetric"] [data-testid="stMetricValue"] {
+        font-size: 1.6rem !important;
+        font-weight: 700 !important;
+        color: #212529 !important;
+    }
 
+    /* Section dividers */
+    .section-header {
+        font-size: 1.15rem;
+        font-weight: 600;
+        padding: 8px 0 4px 0;
+        margin-top: 12px;
+        border-bottom: 2px solid #e9ecef;
+        margin-bottom: 12px;
+    }
+
+    /* Recommendation cards */
+    .reco-card {
+        background: #f8f9fa;
+        border-left: 4px solid #28a745;
+        border-radius: 0 8px 8px 0;
+        padding: 14px 18px;
+        margin: 8px 0;
+    }
+    .reco-card.warning {
+        border-left-color: #ffc107;
+    }
+    .reco-card.danger {
+        border-left-color: #dc3545;
+    }
+
+    /* Footer */
+    .app-footer {
+        text-align: center;
+        color: #adb5bd;
+        font-size: 0.8rem;
+        padding: 20px 0 10px 0;
+        border-top: 1px solid #e9ecef;
+        margin-top: 30px;
+    }
+
+    /* Hide default streamlit hamburger for cleaner look */
+    #MainMenu {visibility: hidden;}
+    footer {visibility: hidden;}
+</style>
+"""
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Helpers
+# ─────────────────────────────────────────────────────────────────────────────
 
 def _formatClassName(rawName: str) -> str:
     """Chuyển 'Plant___Condition' thành 'Plant — Condition' dễ đọc."""
@@ -84,13 +122,29 @@ def _formatClassName(rawName: str) -> str:
     return rawName.replace("_", " ")
 
 
+def _computeEntropy(predictions: list) -> float:
+    """Tính entropy chuẩn hóa từ predictions. 0 = chắc chắn, 1 = uniform."""
+    if not predictions:
+        return 1.0
+    n = len(predictions)
+    if n <= 1:
+        return 0.0
+    entropy = 0.0
+    for p in predictions:
+        conf = p["confidence"]
+        if conf > 1e-10:
+            entropy -= conf * math.log(conf)
+    maxEntropy = math.log(n)
+    return entropy / maxEntropy if maxEntropy > 0 else 0.0
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Model Loading (cached)
 # ─────────────────────────────────────────────────────────────────────────────
 
 @st.cache_resource(show_spinner=False)
-def loadPipeline(modelDir: str):
-    """Load InferencePipeline — cached, chỉ chạy 1 lần."""
+def _loadPipeline(modelDir: str):
+    """Load InferencePipeline — cached, chỉ chạy 1 lần per model dir."""
     from src.evaluation.predictor import InferencePipeline
     return InferencePipeline(modelDir=modelDir, device="cpu")
 
@@ -118,46 +172,61 @@ def _discoverArtifactDirs() -> list:
 # Image Validation
 # ─────────────────────────────────────────────────────────────────────────────
 
-def validateImage(uploadedFile) -> tuple:
-    """
-    Validate ảnh upload. Returns (image: PIL.Image | None, error: str | None).
-    """
+def _validateImage(uploadedFile) -> tuple:
+    """Validate ảnh upload. Returns (image, warnings: list, error: str|None)."""
+    warnings = []
+
     if uploadedFile is None:
-        return None, "Chưa có ảnh nào được tải lên."
+        return None, [], "Chưa có ảnh nào được tải lên."
 
     filename = uploadedFile.name.lower()
     ext = filename.rsplit(".", 1)[-1] if "." in filename else ""
     if ext not in ALLOWED_EXTENSIONS:
-        return None, f"Định dạng file không được hỗ trợ (.{ext}). Vui lòng dùng: {', '.join(ALLOWED_EXTENSIONS)}."
+        return None, [], (
+            f"Định dạng file không được hỗ trợ (.{ext}). "
+            f"Vui lòng dùng: {', '.join(sorted(ALLOWED_EXTENSIONS))}."
+        )
 
     fileSize = uploadedFile.size
     if fileSize > MAX_FILE_SIZE_MB * 1024 * 1024:
-        return None, f"File quá lớn ({fileSize / 1024 / 1024:.1f} MB). Giới hạn: {MAX_FILE_SIZE_MB} MB."
+        return None, [], (
+            f"File quá lớn ({fileSize / 1024 / 1024:.1f} MB). "
+            f"Giới hạn: {MAX_FILE_SIZE_MB} MB."
+        )
 
     try:
         image = Image.open(uploadedFile)
         image.load()
     except Exception:
-        return None, "Không thể đọc file ảnh. File có thể bị hỏng hoặc không phải định dạng ảnh hợp lệ."
+        return None, [], "Không thể đọc file ảnh. File có thể bị hỏng."
 
     w, h = image.size
     if w < MIN_IMAGE_SIZE or h < MIN_IMAGE_SIZE:
-        return None, f"Ảnh quá nhỏ ({w}×{h} px). Kích thước tối thiểu: {MIN_IMAGE_SIZE}×{MIN_IMAGE_SIZE} px."
+        return None, [], (
+            f"Ảnh quá nhỏ ({w}×{h} px). "
+            f"Kích thước tối thiểu: {MIN_IMAGE_SIZE}×{MIN_IMAGE_SIZE} px."
+        )
+
+    # Quality warnings (non-blocking)
+    if w < 100 or h < 100:
+        warnings.append("Ảnh có độ phân giải thấp — kết quả có thể kém chính xác.")
+    if max(w, h) / min(w, h) > 3:
+        warnings.append("Ảnh có tỉ lệ bất thường — nên dùng ảnh vuông hoặc gần vuông.")
 
     try:
         image = image.convert("RGB")
     except Exception:
-        return None, "Không thể chuyển đổi ảnh sang RGB. Vui lòng thử ảnh khác."
+        return None, [], "Không thể chuyển đổi ảnh sang RGB."
 
-    return image, None
+    return image, warnings, None
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Inference (with session_state caching to survive reruns)
+# Inference
 # ─────────────────────────────────────────────────────────────────────────────
 
 def _runAnalysis(pipeline, image, topK, showGradCAM, gradcamAlpha):
-    """Chạy inference và lưu kết quả vào session_state."""
+    """Chạy inference. Returns (predictions, gradcamOverlay, error)."""
     gradcamOverlay = None
     predictions = None
     gradcamError = False
@@ -184,25 +253,19 @@ def _runAnalysis(pipeline, image, topK, showGradCAM, gradcamAlpha):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Main App
+# Render Functions
 # ─────────────────────────────────────────────────────────────────────────────
 
-def main():
-    st.set_page_config(
-        page_title="PlantDocAI — Phân loại bệnh lá cây",
-        page_icon="🌿",
-        layout="wide",
-    )
 
-    # ── Sidebar ───────────────────────────────────────────────────────────
+def _renderSidebar(artifactDirs):
+    """Sidebar: model selector, config, info."""
     with st.sidebar:
-        st.title("⚙️ Cài đặt")
+        st.markdown("## 🌿 PlantDoc AI")
+        st.caption("Hệ thống nhận diện bệnh lá cây")
+        st.divider()
 
-        artifactDirs = _discoverArtifactDirs()
-        if not artifactDirs:
-            st.error("Không tìm thấy artifact nào trong thư mục `artifacts/`.")
-            st.stop()
-
+        # Model selector
+        st.markdown("### ⚙️ Cấu hình")
         defaultIdx = 0
         for i, name in enumerate(artifactDirs):
             if "extended" in name.lower():
@@ -213,177 +276,391 @@ def main():
             "Mô hình", artifactDirs, index=defaultIdx,
             help="Chọn artifact directory chứa model checkpoint.",
         )
-        topK = st.slider("Số lượng dự đoán (Top-K)", 1, 10, 3)
-        showGradCAM = st.checkbox("Hiển thị Grad-CAM", value=True,
-                                   help="Trực quan hóa vùng ảnh mô hình tập trung.")
-        gradcamAlpha = st.slider("Độ đậm Grad-CAM", 0.2, 0.8, 0.5, 0.05,
-                                  disabled=not showGradCAM)
+        topK = st.slider("Top-K dự đoán", 1, 10, 5)
+        showGradCAM = st.checkbox(
+            "Hiển thị Grad-CAM", value=True,
+            help="Trực quan hóa vùng ảnh mô hình tập trung khi dự đoán.",
+        )
+        gradcamAlpha = st.slider(
+            "Độ đậm Grad-CAM", 0.2, 0.8, 0.5, 0.05,
+            disabled=not showGradCAM,
+        )
+
+        st.divider()
+
+        # Model info — sẽ được cập nhật sau khi load pipeline
+        st.markdown("### 📋 Thông tin mô hình")
+        modelInfoPlaceholder = st.empty()
 
         st.divider()
         st.caption(
             "⚠️ **Lưu ý:** Đây là công cụ hỗ trợ nghiên cứu, "
-            "không thay thế ý kiến chuyên gia nông nghiệp. "
-            "Mô hình được train trên tập dữ liệu PlantVillage (38 loại)."
+            "không thay thế ý kiến chuyên gia nông nghiệp."
         )
 
-    # ── Header ────────────────────────────────────────────────────────────
-    st.title("🌿 PlantDocAI")
-    st.markdown("**Hệ thống nhận diện bệnh lá cây bằng Deep Learning** — "
-                "Upload ảnh lá để nhận kết quả phân tích.")
+    return selectedDir, topK, showGradCAM, gradcamAlpha, modelInfoPlaceholder
 
-    # ── Load model ────────────────────────────────────────────────────────
+
+
+def _renderModelInfo(placeholder, pipeline):
+    """Hiển thị model info trong sidebar placeholder."""
+    import torch
+    device = "GPU (CUDA)" if torch.cuda.is_available() else "CPU"
+    placeholder.markdown(f"""
+- **Kiến trúc:** `{pipeline.modelName}`
+- **Số lớp:** {pipeline.numClasses}
+- **Input size:** {pipeline.imageSize}×{pipeline.imageSize}
+- **Device:** {device}
+""")
+
+
+def _renderHeader():
+    """Header + giới thiệu."""
+    st.title("🌿 PlantDoc AI")
+    st.markdown(
+        "**Hệ thống nhận diện bệnh lá cây bằng Deep Learning** "
+        "tích hợp **Explainable AI** (Grad-CAM) và khuyến nghị xử lý."
+    )
+    with st.expander("📖 Hướng dẫn sử dụng", expanded=False):
+        st.markdown("""
+1. **Chọn mô hình** ở thanh bên trái (sidebar).
+2. **Tải ảnh lá cây** lên — hệ thống sẽ tự động phân tích.
+3. Xem **kết quả dự đoán**, **Grad-CAM**, và **khuyến nghị**.
+
+**Lưu ý quan trọng:**
+- Nên dùng ảnh chụp cận cảnh lá cây, đủ sáng và rõ nét.
+- Kết quả chỉ mang tính tham khảo — luôn tham vấn chuyên gia nông nghiệp.
+- Mô hình chỉ nhận diện các bệnh trong tập dữ liệu đã train (PlantVillage).
+""")
+
+
+def _renderPredictionResults(predictions):
+    """Hiển thị kết quả dự đoán: metric cards + top-K."""
+    top1 = predictions[0]
+    confidence = top1["confidence"]
+    confPct = confidence * 100
+    displayName = _formatClassName(top1["className"])
+
+    # Confidence color/label
+    if confidence >= HIGH_CONFIDENCE:
+        confLabel = "Cao"
+        confDelta = "✓ Đáng tin cậy"
+    elif confidence >= LOW_CONFIDENCE:
+        confLabel = "Trung bình"
+        confDelta = "~ Nên kiểm tra thêm"
+    else:
+        confLabel = "Thấp"
+        confDelta = "⚠ Cần tham khảo chuyên gia"
+
+    # Metric cards
+    col1, col2 = st.columns(2)
+    with col1:
+        st.metric("🏷️ Dự đoán chính", displayName)
+    with col2:
+        st.metric("📊 Độ tin cậy", f"{confPct:.1f}%", delta=confDelta)
+
+    # Top-K results
+    if len(predictions) > 1:
+        st.markdown('<p class="section-header">📋 Kết quả Top-K</p>',
+                    unsafe_allow_html=True)
+        for i, pred in enumerate(predictions):
+            conf = pred["confidence"] * 100
+            name = _formatClassName(pred["className"])
+            medals = {0: "🥇", 1: "🥈", 2: "🥉"}
+            prefix = medals.get(i, f"&nbsp;{i+1}.")
+            st.progress(
+                pred["confidence"],
+                text=f"{prefix} {name} — {conf:.1f}%",
+            )
+
+
+def _renderGradcamSection(image, gradcamOverlay, gradcamFallback, showGradCAM):
+    """Hiển thị Grad-CAM section."""
+    st.markdown('<p class="section-header">🔬 Giải thích mô hình (Grad-CAM)</p>',
+                unsafe_allow_html=True)
+
+    if gradcamOverlay is not None:
+        col1, col2 = st.columns(2)
+        with col1:
+            st.image(image, caption="Ảnh gốc", use_container_width=True)
+        with col2:
+            st.image(gradcamOverlay,
+                     caption="Grad-CAM — Vùng mô hình tập trung",
+                     use_container_width=True)
+        st.info(
+            "**Grad-CAM** cho thấy vùng ảnh mô hình \"chú ý\" khi đưa ra dự đoán. "
+            "Vùng đỏ/vàng = mô hình tập trung cao, vùng xanh = tập trung thấp.\n\n"
+            "*Đây là trực quan hóa hậu nghiệm (post-hoc), không phải bằng chứng "
+            "nhân quả. Kết quả chỉ mang tính hỗ trợ giải thích.*",
+            icon="ℹ️",
+        )
+    elif gradcamFallback:
+        st.warning(
+            "Grad-CAM gặp lỗi kỹ thuật trong lần phân tích này. "
+            "Kết quả dự đoán vẫn hiển thị bình thường.",
+            icon="⚠️",
+        )
+    elif showGradCAM:
+        st.info("Grad-CAM không khả dụng cho lần phân tích này.", icon="ℹ️")
+
+
+def _renderRecommendation(className):
+    """Hiển thị khuyến nghị có cấu trúc."""
+    from app.recommendations import getRecommendation
+
+    rec = getRecommendation(className)
+    if rec is None:
+        st.info(
+            "Chưa có thông tin khuyến nghị cho lớp này. "
+            "Vui lòng tham khảo chuyên gia nông nghiệp.",
+            icon="ℹ️",
+        )
+        return
+
+    st.markdown('<p class="section-header">💡 Khuyến nghị</p>',
+                unsafe_allow_html=True)
+
+    isHealthy = rec.get("isHealthy", False)
+
+    if isHealthy:
+        st.success(f"✅ **{rec['name']}** — Cây khỏe mạnh!", icon="🌱")
+        st.markdown(f"**Tiếp tục chăm sóc:** {rec.get('treatment', '')}")
+        if rec.get("prevention"):
+            st.markdown(f"**Phòng ngừa:** {rec['prevention']}")
+    else:
+        st.warning(f"🔍 **{rec['name']}**", icon="🔬")
+
+        # Structured display
+        tabSymp, tabTreat, tabPrev = st.tabs([
+            "🔎 Triệu chứng", "💊 Gợi ý xử lý", "🛡️ Phòng ngừa"
+        ])
+        with tabSymp:
+            st.markdown(rec.get("symptoms", "Chưa có thông tin."))
+        with tabTreat:
+            st.markdown(rec.get("treatment", "Tham khảo chuyên gia nông nghiệp."))
+        with tabPrev:
+            st.markdown(rec.get("prevention", "Tham khảo chuyên gia nông nghiệp."))
+
+        if rec.get("notes"):
+            st.caption(f"📝 *{rec['notes']}*")
+
+    # Disclaimer
+    st.caption(
+        "*Khuyến nghị mang tính tham khảo. Luôn tham vấn chuyên gia "
+        "nông nghiệp trước khi áp dụng biện pháp xử lý.*"
+    )
+
+
+def _renderWarnings(predictions, imageWarnings):
+    """Hiển thị cảnh báo confidence và chất lượng ảnh."""
+    hasWarning = False
+    top1 = predictions[0]
+    confidence = top1["confidence"]
+
+    # Image quality warnings
+    for w in imageWarnings:
+        st.warning(f"📷 {w}", icon="⚠️")
+        hasWarning = True
+
+    # Confidence warnings
+    if confidence < VERY_LOW_CONFIDENCE:
+        st.error(
+            "**Độ tin cậy rất thấp** — Mô hình không tự tin với dự đoán này. "
+            "Ảnh có thể không phải lá cây, không rõ nét, hoặc nằm ngoài "
+            "phân phối dữ liệu đã train. Kết quả chỉ nên dùng để tham khảo.",
+            icon="🚨",
+        )
+        hasWarning = True
+    elif confidence < LOW_CONFIDENCE:
+        st.warning(
+            "**Độ tin cậy thấp** — Kết quả có thể không chính xác. "
+            "Hãy thử chụp ảnh rõ hơn hoặc tham khảo chuyên gia.",
+            icon="⚠️",
+        )
+        hasWarning = True
+
+    # Entropy-based OOD warning
+    normalizedEntropy = _computeEntropy(predictions)
+    if normalizedEntropy > ENTROPY_WARNING_RATIO and confidence < HIGH_CONFIDENCE:
+        st.error(
+            "**⚠️ Cảnh báo OOD — Phân bố dự đoán phân tán** — Mô hình không thể phân biệt rõ ràng "
+            "giữa các lớp. Ảnh có thể không phải lá cây hoặc không thuộc "
+            "các loại bệnh đã train.",
+            icon="🚨",
+        )
+        hasWarning = True
+
+    return hasWarning
+
+
+def _renderFooter(pipeline):
+    """Footer với thông tin model và giới hạn."""
+    st.divider()
+    with st.expander("ℹ️ Thông tin mô hình & Giới hạn"):
+        st.markdown(f"""
+**Thông tin mô hình:**
+- **Kiến trúc:** {pipeline.modelName} (timm)
+- **Tập dữ liệu:** PlantVillage Extended ({pipeline.numClasses} lớp)
+- **Tiền xử lý:** Resize → CenterCrop({pipeline.imageSize}) → Normalize(ImageNet)
+
+**Giới hạn hiện tại:**
+- Chỉ nhận diện {pipeline.numClasses} loại bệnh/trạng thái đã được train
+- Ảnh ngoài phân phối dữ liệu train có thể cho kết quả sai
+- Không thay thế chẩn đoán của chuyên gia nông nghiệp
+- Grad-CAM là trực quan hóa hậu nghiệm, không phải bằng chứng nhân quả
+
+**Dự án:** PlantDoc AI — Thực tập cơ sở (INT13147)
+""")
+
+    st.markdown(
+        '<div class="app-footer">'
+        'PlantDoc AI © 2026 — Hệ thống hỗ trợ nghiên cứu, không thay thế chuyên gia.'
+        '</div>',
+        unsafe_allow_html=True,
+    )
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Main App
+# ─────────────────────────────────────────────────────────────────────────────
+
+def main():
+    st.set_page_config(
+        page_title="PlantDoc AI — Nhận diện bệnh lá cây",
+        page_icon="🌿",
+        layout="wide",
+    )
+    st.markdown(APP_CSS, unsafe_allow_html=True)
+
+    # ── Discover models ──────────────────────────────────────────────────
+    artifactDirs = _discoverArtifactDirs()
+    if not artifactDirs:
+        st.error(
+            "❌ Không tìm thấy artifact nào trong thư mục `artifacts/`. "
+            "Hãy đảm bảo có ít nhất một thư mục chứa `config.json` và checkpoint."
+        )
+        st.stop()
+
+    # ── Sidebar ──────────────────────────────────────────────────────────
+    selectedDir, topK, showGradCAM, gradcamAlpha, modelInfoPlaceholder = \
+        _renderSidebar(artifactDirs)
+
+    # Handle model change: reset results cache if model changed
+    if st.session_state.get("_selectedModel") != selectedDir:
+        st.session_state["_selectedModel"] = selectedDir
+        # Clear cached results and keys
+        st.session_state.pop("results", None)
+        st.session_state.pop("_lastCacheKey", None)
+        # Increment uploader version to reset file uploader widget
+        st.session_state["uploader_version"] = st.session_state.get("uploader_version", 0) + 1
+        st.info(f"✅ Đã chuyển sang mô hình `{selectedDir}`. Vui lòng tải ảnh và chạy dự đoán lại.")
+        # Trigger rerun to apply cleared state and new uploader key
+        st.rerun()
+    # ── Header ───────────────────────────────────────────────────────────
+    _renderHeader()
+
+    # ── Load model ───────────────────────────────────────────────────────
     modelDirPath = str(ARTIFACTS_DIR / selectedDir)
     try:
-        with st.spinner("Đang tải mô hình..."):
-            pipeline = loadPipeline(modelDirPath)
+        with st.spinner("🔄 Đang tải mô hình..."):
+            pipeline = _loadPipeline(modelDirPath)
+        _renderModelInfo(modelInfoPlaceholder, pipeline)
     except FileNotFoundError as e:
-        st.error(f"Không tìm thấy file cần thiết: {e}")
+        st.error(f"❌ Không tìm thấy file cần thiết: {e}")
+        st.info("Kiểm tra lại thư mục artifacts/ và đảm bảo có config.json + checkpoint.")
         st.stop()
     except Exception as e:
-        st.error(f"Lỗi khi tải mô hình: {e}")
+        st.error(f"❌ Lỗi khi tải mô hình: {e}")
+        logger.exception("Failed to load pipeline")
         st.stop()
 
-    # ── Upload ────────────────────────────────────────────────────────────
-    st.subheader("📤 Tải ảnh lên")
+    # ── Upload ───────────────────────────────────────────────────────────
+    st.markdown('<p class="section-header">📤 Tải ảnh lên</p>', unsafe_allow_html=True)
     uploadedFile = st.file_uploader(
-        "Chọn ảnh lá cây (JPG, PNG, WebP)",
+        "Chọn ảnh lá cây cần phân tích",
         type=list(ALLOWED_EXTENSIONS),
-        help="Chọn ảnh chụp rõ nét lá cây cần phân tích.",
+        help="Hỗ trợ JPG, PNG, WebP, BMP, TIFF. Tối đa 10 MB.",
+        label_visibility="collapsed",
+        key=f"file_uploader_{st.session_state.get('uploader_version', 0)}",
     )
 
     if uploadedFile is None:
-        # Reset results khi không có ảnh
         st.session_state.pop("results", None)
-        st.info("👆 Vui lòng tải lên ảnh lá cây để bắt đầu phân tích.")
+        st.info(
+            "👆 **Tải ảnh lá cây lên để bắt đầu phân tích.**\n\n"
+            "Nên dùng ảnh cận cảnh lá cây, đủ sáng và rõ vùng bệnh (nếu có).",
+            icon="🌿",
+        )
         st.stop()
 
-    # ── Validate ──────────────────────────────────────────────────────────
-    image, error = validateImage(uploadedFile)
+    # ── Validate ─────────────────────────────────────────────────────────
+    image, imageWarnings, error = _validateImage(uploadedFile)
     if error:
         st.error(f"❌ {error}")
         st.stop()
 
-    # ── Preview ───────────────────────────────────────────────────────────
-    st.subheader("🖼️ Ảnh tải lên")
-    st.image(image, caption=f"{uploadedFile.name} ({image.size[0]}×{image.size[1]} px)",
-             width=350)
+    # ── Preview ──────────────────────────────────────────────────────────
+    st.image(image,
+             caption=f"📷 {uploadedFile.name} ({image.size[0]}×{image.size[1]} px)",
+             width=360)
 
-    # ── Analyze ───────────────────────────────────────────────────────────
-    analyzeClicked = st.button("🔍 Phân tích", type="primary",
-                                use_container_width=True)
+    # ── Auto-analyze ─────────────────────────────────────────────────────
+    # Tạo cache key từ file content + settings để tránh chạy lại khi rerun
+    cacheKey = (uploadedFile.name, uploadedFile.size, topK, showGradCAM, gradcamAlpha)
 
-    if analyzeClicked:
-        with st.spinner("Đang phân tích ảnh..."):
+    if st.session_state.get("_lastCacheKey") != cacheKey:
+        with st.spinner("🔍 Đang phân tích ảnh..."):
             predictions, gradcamOverlay, errorMsg = _runAnalysis(
                 pipeline, image, topK, showGradCAM, gradcamAlpha
             )
+
         if errorMsg and errorMsg != "gradcam_fallback":
-            st.error(f"❌ Lỗi khi phân tích ảnh. Vui lòng thử lại hoặc dùng ảnh khác.")
+            st.error("❌ Lỗi khi phân tích ảnh. Vui lòng thử lại hoặc dùng ảnh khác.")
+            logger.error("Analysis error: %s", errorMsg)
             st.stop()
 
-        # Lưu kết quả vào session_state để survive reruns
         st.session_state["results"] = {
             "predictions": predictions,
             "gradcamOverlay": gradcamOverlay,
-            "image": image,
-            "filename": uploadedFile.name,
             "gradcamFallback": errorMsg == "gradcam_fallback",
             "showGradCAM": showGradCAM,
         }
+        st.session_state["_lastCacheKey"] = cacheKey
 
-    # ── Display results (from session_state) ──────────────────────────────
+    # ── Display Results ──────────────────────────────────────────────────
     if "results" not in st.session_state:
         st.stop()
 
     res = st.session_state["results"]
     predictions = res["predictions"]
-    gradcamOverlay = res["gradcamOverlay"]
+    gradcamOverlay = res.get("gradcamOverlay")
 
     if not predictions:
         st.stop()
 
     st.divider()
-    st.subheader("📊 Kết quả phân tích")
 
-    # ── Grad-CAM side-by-side ─────────────────────────────────────────────
-    if gradcamOverlay is not None:
-        col1, col2 = st.columns(2)
-        with col1:
-            st.image(image, caption="Ảnh gốc", width="stretch")
-        with col2:
-            st.image(gradcamOverlay,
-                     caption="Grad-CAM — Vùng mô hình tập trung",
-                     width="stretch")
-        st.caption(
-            "ℹ️ *Grad-CAM cho thấy vùng ảnh mô hình \"chú ý\" khi ra quyết định. "
-            "Vùng đỏ/vàng = chú ý cao, vùng xanh = chú ý thấp. "
-            "Đây là trực quan hóa hậu nghiệm, không phải bằng chứng nhân quả.*"
+    # 1) Warnings (show first if confidence is low)
+    _renderWarnings(predictions, imageWarnings)
+
+    # 2) Prediction results
+    st.markdown('<p class="section-header">📊 Kết quả phân tích</p>',
+                unsafe_allow_html=True)
+    _renderPredictionResults(predictions)
+
+    # 3) Grad-CAM
+    if res.get("showGradCAM") or gradcamOverlay is not None:
+        _renderGradcamSection(
+            image, gradcamOverlay,
+            res.get("gradcamFallback", False),
+            res.get("showGradCAM", False),
         )
-    elif res.get("gradcamFallback"):
-        st.warning("⚠️ Grad-CAM gặp lỗi, hiển thị kết quả dự đoán không có heatmap.")
-    elif res.get("showGradCAM"):
-        st.info("ℹ️ Grad-CAM không khả dụng cho lần phân tích này.")
 
-    # ── Top-1 Prediction ──────────────────────────────────────────────────
-    top1 = predictions[0]
-    confidence_pct = top1["confidence"] * 100
-    displayName = _formatClassName(top1["className"])
+    # 4) Recommendation
+    _renderRecommendation(predictions[0]["className"])
 
-    if confidence_pct >= 80:
-        confColor = "green"
-    elif confidence_pct >= 50:
-        confColor = "orange"
-    else:
-        confColor = "red"
-
-    st.markdown(f"""
-### 🏷️ Dự đoán chính
-
-| | |
-|---|---|
-| **Kết quả** | **{displayName}** |
-| **Độ tin cậy** | :{confColor}[**{confidence_pct:.1f}%**] |
-""")
-
-    if confidence_pct < 50:
-        st.warning("⚠️ Độ tin cậy thấp — kết quả có thể không chính xác. "
-                   "Hãy thử chụp ảnh rõ hơn hoặc tham khảo chuyên gia.")
-
-    # ── Top-K Results ─────────────────────────────────────────────────────
-    if len(predictions) > 1:
-        st.markdown("#### Các dự đoán (Top-K)")
-        for i, pred in enumerate(predictions):
-            conf = pred["confidence"] * 100
-            name = _formatClassName(pred["className"])
-            prefix = "🥇" if i == 0 else ("🥈" if i == 1 else ("🥉" if i == 2 else f"{i+1}."))
-            st.progress(pred["confidence"], text=f"{prefix} {name} — {conf:.1f}%")
-
-    # ── Recommendation ────────────────────────────────────────────────────
-    recommendation = RECOMMENDATIONS.get(top1["className"])
-    if recommendation:
-        st.divider()
-        st.subheader("💡 Khuyến nghị")
-        isHealthy = "healthy" in top1["className"].lower()
-        if isHealthy:
-            st.success(f"✅ {recommendation}")
-        else:
-            st.warning(f"🔍 {recommendation}")
-        st.caption("*Khuyến nghị mang tính tham khảo. Luôn tham vấn chuyên gia "
-                   "nông nghiệp trước khi áp dụng biện pháp xử lý.*")
-
-    # ── Footer ────────────────────────────────────────────────────────────
-    st.divider()
-    with st.expander("ℹ️ Về mô hình và giới hạn"):
-        st.markdown(f"""
-- **Kiến trúc:** MobileNetV2 (timm)
-- **Tập dữ liệu:** PlantVillage Extended ({pipeline.numClasses} lớp)
-- **Tiền xử lý:** Resize → CenterCrop(224) → Normalize(ImageNet)
-- **Giới hạn:**
-  - Chỉ nhận diện {pipeline.numClasses} loại bệnh/trạng thái đã được train
-  - Ảnh ngoài phân phối dữ liệu train có thể cho kết quả sai
-  - Không thay thế chẩn đoán chuyên gia
-  - Grad-CAM là trực quan hóa hậu nghiệm, không phải bằng chứng nhân quả
-""")
+    # 5) Footer
+    _renderFooter(pipeline)
 
 
 if __name__ == "__main__":

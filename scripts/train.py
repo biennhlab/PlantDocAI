@@ -37,22 +37,20 @@ def parseArgs() -> argparse.Namespace:
 
 
 def resolveDevice(deviceArg: str) -> torch.device:
-    if deviceArg == "cuda" and torch.cuda.is_available():
-        return torch.device("cuda")
-
+    """Resolve device string to torch.device, with CUDA availability check."""
+    if deviceArg == "cpu":
+        return torch.device("cpu")
     if deviceArg == "cuda" and not torch.cuda.is_available():
         print("[WARN] CUDA requested but not available. Fallback to CPU.")
         return torch.device("cpu")
-
-    if deviceArg == "cpu":
-        return torch.device("cpu")
-
+    # "auto" or "cuda" (when available)
     return torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
 def countParameters(model: torch.nn.Module) -> tuple[int, int]:
-    totalParams = sum(param.numel() for param in model.parameters())
-    trainableParams = sum(param.numel() for param in model.parameters() if param.requires_grad)
+    """Count total and trainable parameters in a model."""
+    totalParams = sum(p.numel() for p in model.parameters())
+    trainableParams = sum(p.numel() for p in model.parameters() if p.requires_grad)
     return totalParams, trainableParams
 
 

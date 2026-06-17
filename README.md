@@ -1,275 +1,178 @@
- 
 # PlantDoc AI 🌿🩺
-Hệ thống nhận diện bệnh cây trồng từ ảnh lá cây, tích hợp **Explainable AI (Grad-CAM)** và **khuyến nghị xử lý**. Dự án phục vụ học phần **“Thực tập cơ sở”** (GVHD: **Thầy Nguyễn Xuân Đức**).
+
+**Hệ thống nhận diện bệnh cây trồng từ ảnh lá cây, tích hợp AI giải thích được (Explainable AI - Grad-CAM) và khuyến nghị xử lý chuyên môn.**
+
+Dự án phục vụ học phần **"Thực tập cơ sở"** (GVHD: **Thầy Nguyễn Xuân Đức**).
 
 ---
 
-## 1) Demo nhanh (Quickstart)
-### 1.1 Cài môi trường
-> Khuyến nghị Python **3.9+** (3.10/3.11 đều ổn).
+## 1. Tổng quan  
 
-```bash
-# Clone repo
-git clone https://github.com/bien3008/PlantDoc_AI.git
-cd PlantDoc_AI
-# Tạo môi trường ảo
-python -m venv .venv
-# Windows:
-.venv\Scripts\activate
-# macOS/Linux:
-source .venv/bin/activate
+**PlantDoc AI** là một hệ thống Deep Learning đầu cuối (end-to-end) giải quyết bài toán phân loại hình ảnh bệnh trên lá cây. Không chỉ dừng lại ở việc đưa ra dự đoán "hộp đen" (black-box), dự án còn tập trung vào **tính minh bạch** thông qua Grad-CAM và cung cấp các **khuyến nghị xử lý nông nghiệp** cụ thể.
 
-# Cài dependencies
-pip install -r requirements.txt
+*   **Vấn đề giải quyết:** Nhu cầu nhận diện nhanh chóng và chính xác các loại bệnh trên cây trồng từ ảnh chụp thực địa, hỗ trợ người nông dân và kỹ sư nông nghiệp ra quyết định kịp thời.
+*   **Tại sao dự án đáng làm?** Khác với các mô hình phân loại thông thường, PlantDoc AI tích hợp kiểm soát đầu vào (cảnh báo ảnh ngoài phân phối - OOD) và Grad-CAM (giải thích vùng mô hình tập trung). Điều này giúp tăng độ tin cậy và ngăn chặn việc hệ thống đưa ra kết quả sai lệch khi người dùng tải lên những bức ảnh không phải là lá cây.
 
+---
 
-### 1.2 Chạy Web App (Streamlit)
+## 2. Tính năng nổi bật
+
+*   ✅ **Phân loại đa lớp:** Nhận diện chính xác loại cây và bệnh lý dựa trên tập dữ liệu PlantVillage mở rộng.
+*   ✅ **Giải thích mô hình:** Trực quan hóa vùng ảnh (heatmap) mà mô hình chú ý nhất khi đưa ra dự đoán.
+*   ✅ **Kiểm soát đầu vào & Cảnh báo OOD:** Sử dụng Entropy-based Detection và Confidence Thresholding để cảnh báo nếu ảnh đầu vào không hợp lệ hoặc có độ tin cậy thấp.
+*   ✅ **Khuyến nghị xử lý:** Cung cấp nguyên nhân, triệu chứng và hướng dẫn điều trị/phòng ngừa chi tiết cho từng loại bệnh.
+*   ✅ **Huấn luyện linh hoạt:** Hỗ trợ Staged Fine-tuning, Layer-wise Learning Rate, Weighted Random Sampler và Augmentation đa dạng thông qua file YAML.
+*   ✅ **Giao diện Web chuyên nghiệp:** Ứng dụng Streamlit hiển thị rõ ràng thông tin mô hình, kết quả dự đoán Top-K, Grad-CAM và khuyến nghị.
+
+---
+
+## 3. Kiến trúc dự án
+
+![Project Architecture](img/flow_diagram.png)
+
  
-streamlit run app/main.py
- 
-
-### 1.3 Pipeline đầy đủ (tùy chọn)
-  
-# 1) Chuẩn bị/split dữ liệu
-python scripts/prepare_data.py --config configs/default.yaml
-
-# 2) Train model
-python scripts/train.py --config configs/default.yaml
-
-# 3) Evaluate
-python scripts/eval.py --config configs/default.yaml
-
-# 4) Demo Grad-CAM ảnh đơn
-python scripts/demo_gradcam.py --config configs/default.yaml --image data/samples/leaf.jpg
- 
-````
----
-
-## 2) Tính năng chính (Features)
-
-* ✅ **Phân loại đa lớp**: nhận diện *cây + bệnh* (PlantVillage: ~54k ảnh, 14 loài, 38 lớp).
-* ✅ **Giải thích mô hình (XAI)**: **Grad-CAM heatmap** chồng lên ảnh gốc.
-* ✅ **Khuyến nghị xử lý**: gợi ý nguyên nhân & cách xử lý theo bệnh.
-* ✅ **Kiểm soát đầu vào**: cảnh báo nếu ảnh **không phải lá cây** để giảm “black-box”.
-* ✅ **Local-first**: chạy local, dễ demo trực tiếp.
-
----
-
-## 3) Kiến trúc tổng quan
-
-**User (Upload ảnh)** → **Preprocess** → **Model (MobileNetV2/EfficientNet-B0)** →
-(1) **Prediction Top-k** + confidence → (2) **Grad-CAM** → **Overlay Heatmap** →
-**Recommendation** + **Input Validation message** → Hiển thị trên Streamlit.
-
----
-
-## 4) Tech Stack
-
-* Python 3.9+
-* Deep Learning: **PyTorch** hoặc **TensorFlow/Keras** *(chọn 1 stack cho repo của bạn)*
-* Xử lý ảnh: OpenCV, PIL
-* Web: Streamlit
-* Quản lý: Git/GitHub (commit đều theo tuần)
-
----
-
-## 5) Cấu trúc thư mục
+## 4. Cấu trúc thư mục 
 
 ```text
-PlantDoc_AI/
-├── app/                      # Streamlit UI
-│   ├── main.py
-│   └── components/           # (optional) UI components
-├── src/                      # Core logic
-│   ├── config.py             # config loader / constants
-│   ├── data/                 # dataset, transforms, split
-│   ├── models/               # backbone loader, checkpoints
-│   ├── train/                # trainer, loss, optimizer, scheduler
-│   ├── eval/                 # metrics, confusion matrix
-│   ├── infer/                # inference pipeline (predict top-k)
-│   ├── xai/                  # grad-cam + visualization overlay
-│   ├── validators/           # non-leaf check (input validation)
-│   └── utils/                # common utilities (seed, io, logging)
-├── scripts/                  # runnable scripts: train/eval/demo/prepare_data
-├── notebooks/                # EDA & experiments (ipynb)
-├── data/                     # dataset (ignored by git) + sample images
-│   ├── samples/
-│   ├── raw/                  # PlantVillage downloaded/extracted
-│   ├── processed/            # resized/standardized (optional)
-│   └── splits/               # train/val/test split files
-├── runs/                     # outputs: checkpoints, logs, gradcam images
-├── docs/
-│   ├── TODO.md
-│   ├── proposal.md
-│   ├── architecture.md
-│   ├── evaluation.md
-│   └── weekly-log/
-├── requirements.txt
-└── README.md
+PlantDocAI/
+├── app.py                    # Giao diện chính của Streamlit App
+├── app/                      # Các module phụ trợ cho Streamlit
+│   └── recommendations.py    # Logic hiển thị khuyến nghị bệnh
+├── configs/                  # Các file cấu hình YAML (baseline, extended,...)
+├── data/                     # Thư mục chứa dữ liệu thô và splits (CSV)
+├── scripts/                  # Các kịch bản chạy độc lập (entrypoints)
+│   ├── train.py              # Script huấn luyện mô hình
+│   ├── evaluate.py           # Script đánh giá mô hình trên tập test
+│   ├── predict.py            # Script chạy inference trên một ảnh
+│   └── createSplits.py       # Script chia tập dữ liệu train/val/test
+├── src/                      # Source code core của hệ thống
+│   ├── data/                 # DataLoader, Augmentations
+│   ├── evaluation/           # Metrics, Inference Pipeline
+│   ├── explain/              # Thuật toán Grad-CAM
+│   ├── models/               # Factory khởi tạo model (timm)
+│   ├── training/             # Trainer, Loss, Optimizer, Scheduler
+│   └── utils/                # Logging, Seed, Config parsing
+├── artifacts/                # (Sinh ra khi train) Chứa model weights, config.json
+└── requirements.txt          # Các thư viện phụ thuộc
 ```
----
-
-## 6) Dataset (PlantVillage)
-
-* Nguồn phổ biến: PlantVillage (Kaggle)
-* Đầu vào: ảnh lá cây (RGB)
-* Đầu ra: nhãn đa lớp (cây + bệnh)
-
-### 6.1 Gợi ý tổ chức dữ liệu
-
-* `data/raw/PlantVillage/` giữ nguyên cấu trúc thư mục của dataset (theo lớp).
-* `data/splits/` chứa file split (CSV/JSON) để **tái lập** train/val/test.
 
 ---
 
-## 7) Training & Evaluation
+## 5. Hướng dẫn cài đặt 
 
-### 7.1 Baseline (Week 3)
+Yêu cầu: **Python 3.9+**
 
-* Backbone: `MobileNetV2` hoặc `EfficientNet-B0`
-* Transfer learning từ ImageNet
-* Loss: CrossEntropy
-* Metrics tối thiểu:
+```bash
+# 1. Clone repository
+git clone https://github.com/biennhlab/PlantDocAI.git
+cd PlantDocAI
 
-  * Accuracy
-  * F1-macro (khuyến nghị vì data có thể lệch lớp)
+# 2. Tạo môi trường ảo (khuyến nghị)
+python -m venv .venv
 
-### 7.2 Fine-tuning (Week 4)
+# Kích hoạt môi trường (Windows)
+.venv\Scripts\activate
+# Kích hoạt môi trường (macOS/Linux)
+source .venv/bin/activate
 
-* Freeze head giai đoạn 1 → unfreeze một phần/ toàn bộ backbone giai đoạn 2
-* Tuning:
-
-  * learning rate
-  * weight decay
-  * scheduler (cosine/onecycle)
-  * augmentation
-
-### 7.3 Output sau train
-
-* `runs/checkpoints/best.*` (best model)
-* `runs/logs/train_log.csv` (loss/metric theo epoch)
-* `runs/eval/confusion_matrix.png` (nếu có)
+# 3. Cài đặt dependencies
+pip install -r requirements.txt
+```
 
 ---
 
-## 8) Explainable AI — Grad-CAM
+## 6. Chuẩn bị dữ liệu 
 
-### 8.1 Mục tiêu
-
-* Tạo **heatmap** cho vùng ảnh mà mô hình “chú ý” khi dự đoán lớp bệnh.
-* Chồng heatmap lên ảnh gốc để người dùng hiểu lý do dự đoán.
-
-### 8.2 Output
-
-* `runs/gradcam_samples/<image_name>_cam.png`
-* Streamlit hiển thị:
-
-  * ảnh gốc
-  * ảnh overlay heatmap
-  * top-k dự đoán
-
----
-
-## 9) Input Validation (Non-leaf warning)
-
-### 9.1 Vì sao cần?
-
-Nếu user upload ảnh không phải lá (ví dụ: người, đồ vật), model vẫn “bắt” một lớp bệnh → dễ gây hiểu lầm.
-
-### 9.2 Chiến lược (2 hướng)
-
-* **Option A (A+)**: mô hình nhị phân `leaf vs non-leaf`
-* **Option B (MVP)**: rule-based + confidence threshold:
-
-  * Nếu max confidence < threshold → cảnh báo “Ảnh không rõ/không phải lá”
-
-> Repo nên ghi rõ bạn dùng option nào trong `docs/architecture.md`.
+1. Tải bộ dữ liệu gốc [extended dataset](https://drive.google.com/file/d/1l4EuesCfAA3NyNTQV5gC7Ua1oi-1Y_Mp/view?usp=drive_link) và giải nén vào thư mục `data/extended/` (hoặc thư mục tương ứng trong config).
+   Cấu trúc mong đợi:
+   ```
+   data/extended/
+   ├── Apple___Apple_scab/
+   ├── Apple___Black_rot/
+   └── ...
+   ```
+2. Chạy script để tạo các file phân chia dữ liệu (`train.csv`, `val.csv`, `test.csv`):
+   ```bash
+   python scripts/createSplits.py --dataDir data/extended --outDir data/splits
+   ```
 
 ---
 
-## 10) Streamlit UI (App)
+## 7. Cấu hình mô hình 
 
-### 10.1 Luồng người dùng
+Mọi thay đổi về siêu tham số (hyperparameters), đường dẫn dữ liệu hay augmentation đều nằm trong `configs/`.
+Ví dụ một số cài đặt quan trọng trong `configs/extended.yaml`:
 
-1. Upload ảnh
-2. App kiểm tra input
-3. Predict top-k
-4. Sinh Grad-CAM & overlay
-5. Hiển thị recommendations
-
-### 10.2 Lưu ý hiệu năng
-
-* Cache model load:
-
-  * `st.cache_resource` (khuyến nghị)
-* Tránh load checkpoint lại mỗi lần user bấm nút.
+*   `modelName`: Kiến trúc backbone (vd: `mobilenetv2_100`, `efficientnet_b0`).
+*   `batchSize`, `numEpochs`, `learningRate`: Cấu hình train cơ bản.
+*   `useStagedFinetuning`: Bật/tắt huấn luyện 2 giai đoạn (freeze head trước, sau đó unfreeze toàn bộ).
+*   `augmentation`: Các phép biến đổi dữ liệu (Rotate, Blur, Sharpness, Elastic, CoarseDropout).
 
 ---
 
-## 11) Reproducibility
+## 8. Huấn luyện 
 
-* Set seed (random/np/torch/tf)
-* Ghi config chạy vào file `runs/config_used.yaml`
-* Lưu version model + dataset split
+Để bắt đầu huấn luyện mô hình với cấu hình `extended.yaml`:
 
----
+```bash
+python scripts/train.py --config configs/extended.yaml
+```
 
-## 12) Nhật ký tiến độ & Quy tắc commit
-
-### 12.1 Weekly log
-
-* Mỗi tuần cập nhật file: `docs/weekly-log/week-0X.md`
-* Nội dung: việc đã làm, evidence (lệnh chạy, screenshot), issue, plan tuần sau.
-
-### 12.2 Commit đều (gợi ý)
-
-* Mỗi task nhỏ = 1 commit
-* Ví dụ:
-
-  * `feat: add dataset loader`
-  * `feat: implement grad-cam`
-  * `fix: correct label mapping`
-  * `docs: update week-03 log`
-  * `test: add preprocessing tests`
+**Workflow Checkpoint (Quản lý Artifacts):**
+*   Mô hình, cấu hình và logs sẽ được lưu tự động vào `artifacts/<experimentName>/`.
+*   Trọng số mô hình tốt nhất được lưu tại: `artifacts/<experimentName>/checkpoints/best.pt`.
+*   Nếu quá trình huấn luyện bị gián đoạn, bạn có thể tiếp tục bằng cờ `--resume`:
+    ```bash
+    python scripts/train.py --config configs/extended.yaml --resume
+    ```
 
 ---
 
-## 13) Roadmap 8 tuần
+## 9. Đánh giá
 
-Chi tiết xem: `docs/TODO.md`
-Tóm tắt:
+Để đánh giá mô hình đã huấn luyện trên tập Test (tính toán Accuracy, F1-macro, xuất Confusion Matrix):
 
-* Week 1: proposal + setup
-* Week 2: data pipeline
-* Week 3: baseline train
-* Week 4: fine-tune + improve metrics
-* Week 5: Grad-CAM
-* Week 6: Streamlit app
-* Week 7: input validation + tests + UX
-* Week 8: finalize report + demo video
+```bash
+python scripts/evaluate.py --modelDir artifacts/mobilenetV2_extended
+```
+*Lưu ý: Thay `mobilenetV2_extended` bằng tên experiment thực tế của bạn.*
 
 ---
 
-## 14) Troubleshooting (các lỗi hay gặp)
+## 10. Chạy dự đoán ảnh đơn (Inference)
 
-* **Thiếu CUDA / chạy CPU chậm**: kiểm tra phiên bản torch/tf phù hợp, hoặc giảm batch size.
-* **Mismatch số lớp**: đảm bảo mapping label2idx thống nhất giữa train và infer.
-* **Ảnh lỗi/đọc không được**: thêm try/except trong dataset class + log file lỗi.
-* **Grad-CAM ra heatmap đen**: chọn đúng layer conv cuối + normalize + tránh hook sai.
+Sử dụng CLI để dự đoán một ảnh bất kỳ (không cần bật Web App):
 
----
-
-## 15) License & Disclaimer
-
-* Dự án phục vụ học tập.
-* Kết quả dự đoán chỉ mang tính tham khảo, **không thay thế chẩn đoán chuyên gia nông nghiệp**.
+```bash
+python scripts/predict.py --image path/to/leaf.jpg --modelDir artifacts/mobilenetV2_extended --topK 3
+```
+*Output sẽ in ra terminal các nhãn có xác suất cao nhất kèm theo độ tin cậy (confidence).*
 
 ---
 
-## 16) Acknowledgements
+## 11. Giao diện Web
 
-* PlantVillage dataset
-* Pretrained models (ImageNet)
-* Streamlit community
+Dự án cung cấp một giao diện web chuyên nghiệp để demo trực tiếp.
 
+```bash
+streamlit run app.py
+```
+
+*   **Chức năng:** Tải ảnh lên, ứng dụng sẽ tự động chạy Inference, sinh ảnh Grad-CAM, hiển thị phân bố Top-K và đề xuất xử lý bệnh tật.
+*   **Safety Warning:** Ứng dụng sẽ hiện cảnh báo nếu độ tin cậy thấp hoặc có dấu hiệu ảnh tải lên nằm ngoài phân phối dữ liệu (không phải lá cây).
+---
+
+## 12. Hạn chế và Hướng phát triển
+
+### Hạn chế hiện tại:
+*   **Domain Gap:** Mô hình được huấn luyện chủ yếu trên ảnh chụp trong điều kiện phòng thí nghiệm (PlantVillage) với nền đơn giản. Độ chính xác có thể giảm khi áp dụng trên ảnh thực địa với nền phức tạp.
+*   **Input Validation:** Module cảnh báo ảnh không phải lá (OOD) hiện dựa vào mức độ Entropy của Softmax, chưa phải là một mô hình phân loại Leaf vs. Non-leaf độc lập hoàn toàn.
+*   **Tính chất tham khảo:** Grad-CAM chỉ là công cụ trực quan hóa hậu nghiệm (post-hoc) giúp giải thích quyết định của mô hình, không phải bằng chứng y học thực vật tuyệt đối.
+
+### Hướng phát triển:
+*   **Bổ sung dữ liệu thực địa:** Tích hợp thêm các bộ dữ liệu chụp từ nông trại thực tế để tăng khả năng tổng quát hóa.
+*   **Cải tiến kiến trúc:** Thử nghiệm các kiến trúc ViT (Vision Transformer) để so sánh hiệu năng khai phá đặc trưng cục bộ và toàn cục.
+*   **Deployment:** Đóng gói bằng Docker và triển khai lên các nền tảng đám mây (AWS/GCP) hoặc tối ưu hóa ONNX/TFLite để đưa xuống thiết bị di động (Edge AI).
+
+---
  

@@ -56,6 +56,26 @@ def loadCheckpoint(
     return checkpoint
 
 
+def findCheckpoint(modelDir: str) -> Optional[Path]:
+    """
+    Tìm checkpoint file theo thứ tự ưu tiên chuẩn.
+
+    Thứ tự: checkpoints/best.pt → best.pt → checkpoints/last.pt.
+
+    Args:
+        modelDir: Đường dẫn tới thư mục artifact chứa checkpoint.
+
+    Returns:
+        Path tới checkpoint nếu tìm thấy, None nếu không.
+    """
+    base = Path(modelDir)
+    for candidate in ("checkpoints/best.pt", "best.pt", "checkpoints/last.pt"):
+        path = base / candidate
+        if path.exists():
+            return path
+    return None
+
+
 def saveJson(savePath: str, data: Dict[str, Any]):
     """
     Save dictionary ra file JSON.
